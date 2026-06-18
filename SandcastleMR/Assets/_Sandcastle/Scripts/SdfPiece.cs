@@ -4,18 +4,18 @@ namespace Sandcastle
 {
     /// <summary>
     /// 标记一个 SDF 形状。挂在放置的构件 GameObject 上。
-    /// 目前只支持球形，后续扩展圆柱/胶囊/Box。
-    /// 
-    /// 放置时自动注册到场景里的 SdfVolume；
-    /// 销毁时自动注销。
+    /// 支持：Sphere, Box, BakedMesh（从 MeshSdfAsset 采样）
     /// </summary>
     public class SdfPiece : MonoBehaviour
     {
-        public enum ShapeType { Sphere, Capsule, Box }
+        public enum ShapeType { Sphere, Capsule, Box, BakedMesh }
 
         [Header("形状")]
         public ShapeType shape = ShapeType.Sphere;
-        public float radius = 0.5f;  // 单位：米（4cm 默认）
+        public float radius = 0.5f;
+
+        [Header("Baked Mesh SDF")]
+        public MeshSdfAsset bakedSdf;
 
         private SdfVolume _volume;
 
@@ -24,14 +24,13 @@ namespace Sandcastle
             // 不在这里自动注册，由放置器设完参数后手动调 RegisterToVolume()
         }
 
-        /// <summary>手动注册到 SdfVolume，应在设完 radius/shape 后调用</summary>
+        /// <summary>手动注册到 SdfVolume，应在设完参数后调用</summary>
         public void RegisterToVolume()
         {
             _volume = FindObjectOfType<SdfVolume>();
             if (_volume != null)
             {
                 _volume.Register(this);
-                Debug.Log($"[SdfPiece] Registered at {transform.position}, radius={radius}");
             }
             else
             {
@@ -46,7 +45,6 @@ namespace Sandcastle
 
         /// <summary>
         /// 返回世界坐标 p 处到此形状表面的带符号距离。
-        /// 负 = 在表面内部，正 = 在表面外部。
         /// </summary>
         public float SampleSdf(Vector3 worldPos)
         {
@@ -54,6 +52,10 @@ namespace Sandcastle
             {
                 case ShapeType.Sphere:
                     return SdfSphere(worldPos);
+                case ShapeType.Box:
+                    return SdfBox(worldPos);
+                case ShapeType.BakedMesh:
+                    return SdfBaked(worldPos);
                 default:
                     return SdfSphere(worldPos);
             }
@@ -62,6 +64,27 @@ namespace Sandcastle
         float SdfSphere(Vector3 p)
         {
             return Vector3.Distance(p, transform.position) - radius * transform.lossyScale.x;
+        }
+
+        float SdfBox(Vector3 p)
+        {
+            Vector3 local = transform.InverseTransformPoint(p);
+            Vector3 halfSize = Vector3.one * radius;
+            Vector3 q = new Vector3(
+                Mathf.Abs(local.x) - halfSize.x,
+                Mathf.Abs(local.y) - halfSize.y,
+                Mathf.Abs(local.z) - halfSize.z);
+            float outside = new Vector3(Mathf.Max(q.x, 0), Mathf.Max(q.y, 0), Mathf.Max(q.z, 0)).magnitude;
+            float inside = Mathf.Min(Mathf.Max(q.x, Mathf.Max(q.y, q.z)), 0f);
+            return outside + inside;
+        }
+
+        float SdfBaked(Vector3 p)
+        {
+            if (bakedSdf == null) return float.PositiveInfinity;
+            // 世界坐标 → mesh 本地坐标
+            Vector3 local = transform.InverseTransformPoint(p);
+            return bakedSdf.SampleAtLocal(local);
         }
     }
 }
