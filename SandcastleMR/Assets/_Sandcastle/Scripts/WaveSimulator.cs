@@ -51,7 +51,17 @@ namespace Sandcastle
             if (sdfVolume == null) sdfVolume = FindObjectOfType<SdfVolume>();
             if (simpleWave == null) simpleWave = FindObjectOfType<SimpleWave>();
             _terrain = FindObjectOfType<SandTerrain>();
+
+            // 自动计算基础水位 = 沙地Y + initialHeight + 水面偏移
+            if (_terrain != null && simpleWave != null)
+            {
+                baseWaterLevel = _terrain.transform.position.y + _terrain.initialHeight + simpleWave.heightAboveSand;
+            }
             _currentLevel = baseWaterLevel;
+
+            // 立即设置全局变量，避免第一帧闪烁
+            Shader.SetGlobalFloat("_GlobalWaterY", baseWaterLevel + waveAmplitude);
+            Shader.SetGlobalFloat("_GlobalWetTransition", 0.05f);
         }
 
         void Update()
