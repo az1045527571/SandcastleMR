@@ -67,12 +67,27 @@ public class SdfPiecePlacer : MonoBehaviour
 
     void PlaceSdfSphere(Vector3 pos)
     {
+        // 将位置 clamp 到 SDF 体积范围
+        if (_volume != null)
+        {
+            Vector3 vCenter = _volume.transform.position;
+            Vector3 vSize = _volume.size;
+            Vector3 vMin = vCenter - vSize * 0.5f;
+            Vector3 vMax = vCenter + vSize * 0.5f;
+            float r = _currentRadius;
+            Vector3 clamped;
+            clamped.x = Mathf.Clamp(pos.x, vMin.x + r, vMax.x - r);
+            clamped.y = Mathf.Clamp(pos.y, vMin.y + r, vMax.y - r);
+            clamped.z = Mathf.Clamp(pos.z, vMin.z + r, vMax.z - r);
+            Debug.Log($"[SdfPlacer] raw={pos}, clamped={clamped}, vol center={vCenter}, vol size={vSize}");
+            pos = clamped;
+        }
+
         var go = new GameObject("SdfSphere");
         go.transform.position = pos;
         var piece = go.AddComponent<SdfPiece>();
         piece.shape = SdfPiece.ShapeType.Sphere;
         piece.radius = _currentRadius;
-        // SdfPiece.OnEnable 会自动注册到 SdfVolume 并触发重建
     }
 
     void DeleteNearest(Ray ray)
