@@ -105,6 +105,13 @@ public class SandcastleBootstrap : MonoBehaviour
         sdfGo.AddComponent<SdfVolume>();
         sdfGo.AddComponent<SdfVolumeBoundsVisualizer>();
 
+        // 在 SDF 体积底部加一个扁平 BoxCollider，用于接收射线放置球
+        var sdfFloor = new GameObject("SdfFloor");
+        sdfFloor.transform.SetParent(sdfGo.transform, false);
+        sdfFloor.transform.localPosition = new Vector3(0f, -0.5f, 0f); // Y=-0.5 相对体积中心(0.5)，即世界 Y=0
+        var box = sdfFloor.AddComponent<BoxCollider>();
+        box.size = new Vector3(5f, 0.02f, 5f); // 薄片覆盖整个 SDF 底面
+
         // SDF 放置器（按 2 切换到 SDF 模式）
         var sdfPlacerGo = new GameObject("SdfPiecePlacer");
         sdfPlacerGo.transform.SetParent(transform, false);
