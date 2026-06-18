@@ -239,36 +239,27 @@ public class PiecePlacer : MonoBehaviour
         var tower = new GameObject("RoundTower");
         tower.SetActive(false);
 
-        // 塔身
-        var body = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        // 球体作为圆塔
+        var body = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         body.name = "Body";
         body.transform.SetParent(tower.transform, false);
         body.transform.localPosition = new Vector3(0f, 0.5f, 0f);
-        body.transform.localScale = new Vector3(0.6f, 0.5f, 0.6f);
+        body.transform.localScale = new Vector3(0.6f, 0.6f, 0.6f);
 
-        // 塔顶
-        var top = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        top.name = "Top";
-        top.transform.SetParent(tower.transform, false);
-        top.transform.localPosition = new Vector3(0f, 1.1f, 0f);
-        top.transform.localScale = new Vector3(0.7f, 0.3f, 0.7f);
-
-        // 材质：使用 CastlePiece shader（与 Sand 同质，仅额外做交界处法线融合）
+        // 材质：使用 CastlePiece shader
         Shader shader = Shader.Find("Sandcastle/CastlePiece");
         if (shader == null) shader = Shader.Find("Universal Render Pipeline/Lit");
         var mat = new Material(shader);
         body.GetComponent<Renderer>().sharedMaterial = mat;
-        top.GetComponent<Renderer>().sharedMaterial = mat;
 
         // CastlePiece
         var piece = tower.AddComponent<CastlePiece>();
         piece.baseRadius = 0.35f;
 
         // 碰撞体
-        var col = tower.AddComponent<CapsuleCollider>();
-        col.center = new Vector3(0f, 0.6f, 0f);
+        var col = tower.AddComponent<SphereCollider>();
+        col.center = new Vector3(0f, 0.5f, 0f);
         col.radius = 0.35f;
-        col.height = 1.2f;
 
         DontDestroyOnLoad(tower);
         return tower;
