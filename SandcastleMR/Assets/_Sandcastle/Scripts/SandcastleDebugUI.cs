@@ -7,8 +7,15 @@ using UnityEngine;
 public class SandcastleDebugUI : MonoBehaviour
 {
     public float blendHeight = 0.4f;
+    public float sinkDepth = 0.18f;
 
     private bool _show = true;
+    private PiecePlacer _placer;
+
+    void Start()
+    {
+        _placer = FindObjectOfType<PiecePlacer>();
+    }
 
     void Update()
     {
@@ -19,18 +26,29 @@ public class SandcastleDebugUI : MonoBehaviour
     {
         if (!_show) return;
 
-        GUILayout.BeginArea(new Rect(10, 10, 300, 60), GUI.skin.box);
-        GUILayout.Label($"Blend Height: {blendHeight:F2}  (F1=hide)");
-        float v = GUILayout.HorizontalSlider(blendHeight, 0.05f, 3f);
-        if (!Mathf.Approximately(v, blendHeight))
+        GUILayout.BeginArea(new Rect(10, 10, 300, 100), GUI.skin.box);
+
+        GUILayout.Label($"Blend Height: {blendHeight:F2}");
+        float bh = GUILayout.HorizontalSlider(blendHeight, 0.05f, 3f);
+        if (!Mathf.Approximately(bh, blendHeight))
         {
-            blendHeight = v;
-            ApplyToAll();
+            blendHeight = bh;
+            ApplyBlendHeight();
         }
+
+        GUILayout.Label($"Sink Depth: {sinkDepth:F2}");
+        sinkDepth = GUILayout.HorizontalSlider(sinkDepth, 0f, 0.5f);
+
+        GUILayout.Label("F1=隐藏");
         GUILayout.EndArea();
     }
 
-    void ApplyToAll()
+    public float GetSinkDepth()
+    {
+        return sinkDepth;
+    }
+
+    void ApplyBlendHeight()
     {
         foreach (var piece in FindObjectsOfType<CastlePiece>())
         {
