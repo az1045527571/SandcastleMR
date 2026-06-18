@@ -133,6 +133,17 @@ public class PiecePlacer : MonoBehaviour
         // 确保有 CastlePiece 组件
         if (go.GetComponent<CastlePiece>() == null)
             go.AddComponent<CastlePiece>();
+
+        // 在塔脚下堆一圈沙，形成沙堡基座
+        var piece = go.GetComponent<CastlePiece>();
+        if (_terrain != null && piece != null)
+        {
+            float radius = piece.baseRadius * _currentScale * 1.6f;  // 沙堡基座比塔身略宽
+            float moundHeight = 0.15f * _currentScale;
+            _terrain.Pile(hit.point, radius, moundHeight);
+            // 在边缘额外补一小圈，让过渡更柔
+            _terrain.Pile(hit.point, radius * 0.6f, moundHeight * 0.5f);
+        }
     }
 
     void DeletePiece()
