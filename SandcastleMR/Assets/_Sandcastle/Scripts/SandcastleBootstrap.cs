@@ -105,6 +105,7 @@ public class SandcastleBootstrap : MonoBehaviour
         sdfMr.sharedMaterial = new Material(sdfSandShader);
         sdfGo.AddComponent<SdfVolume>();
         sdfGo.AddComponent<SdfVolumeBoundsVisualizer>();
+        sdfGo.AddComponent<CollapseDetector>();
 
         // 在 SDF 体积底部加一个扁平 BoxCollider，用于接收射线放置球
         var sdfFloor = new GameObject("SdfFloor");

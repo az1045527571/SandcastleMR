@@ -110,6 +110,19 @@ namespace Sandcastle
             return transform.TransformPoint(centered);
         }
 
+        /// <summary>获取当前 SDF 数据数组引用（只读）</summary>
+        public float[] GetSdfData() => _sdf;
+
+        /// <summary>将指定体素擦除（设侵蚀值让其变为空气）</summary>
+        public void EraseVoxels(System.Collections.Generic.List<int> indices)
+        {
+            foreach (int idx in indices)
+            {
+                // 强制设侵蚀值让该体素变正（空气）
+                _erosion[idx] = Mathf.Max(_erosion[idx], -_sdfBase[idx] + 0.01f);
+            }
+        }
+
         /// <summary>
         /// 重新计算整个 SDF 并提取 mesh。
         /// </summary>
