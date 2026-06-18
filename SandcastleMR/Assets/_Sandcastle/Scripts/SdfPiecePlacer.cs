@@ -246,6 +246,11 @@ public class SdfPiecePlacer : MonoBehaviour
     {
         if (_preview == null) return;
         _preview.SetActive(true);
+
+        // 预览也吸附到地形高度
+        if (_terrain != null)
+            pos.y = _terrain.SampleHeight(pos);
+
         _preview.transform.position = pos;
         _preview.transform.rotation = Quaternion.Euler(0, _currentRotY, 0);
         if (_mode == Mode.Sphere)
