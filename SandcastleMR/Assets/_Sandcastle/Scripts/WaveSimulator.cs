@@ -69,6 +69,12 @@ namespace Sandcastle
 
             _currentLevel = baseWaterLevel + surge * waveAmplitude;
 
+            // 全局水位传给所有 Sand shader（顶点低Y会自动显示为湿沙）
+            // 采用峰值水位，这样退潮后被打过的沙还是湿的，梦错位阐明
+            float maxLevel = baseWaterLevel + waveAmplitude;
+            Shader.SetGlobalFloat("_GlobalWaterY", maxLevel);
+            Shader.SetGlobalFloat("_GlobalWetTransition", 0.05f);
+
             // 同步水面视觉
             if (simpleWave != null)
             {

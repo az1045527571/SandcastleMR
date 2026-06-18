@@ -37,6 +37,10 @@ Shader "Sandcastle/Sand"
                 float _SparkleScale;
             CBUFFER_END
 
+            // 全局水位（世界 Y）、湿过渡带
+            float _GlobalWaterY;
+            float _GlobalWetTransition;
+
             struct Attributes
             {
                 float4 positionOS : POSITION;
@@ -128,15 +132,17 @@ Shader "Sandcastle/Sand"
                 float3 dryColor = _BaseColor.rgb * (blend * _NoiseStrength + (1.0 - _NoiseStrength));
                 // 湿沙颜色
                 float3 wetColor = _WetColor.rgb * (blend * _NoiseStrength * 0.5 + (1.0 - _NoiseStrength * 0.5));
-                // 按湿度混合
-                float3 albedo = lerp(dryColor, wetColor, IN.wetness);
+                // 按湿度混合：顶点 vertex color 传递的 wetness + 世界水位判断
+                float waterWet = saturate((_GlobalWaterY - IN.positionWS.y) / max(_GlobalWetTransition, 0.001));
+                float wetness = max(IN.wetness, waterWet);
+                float3 albedo = lerp(dryColor, wetColor, wetness);
 
                 // 闪光颗粒（三面混合）
                 float spXZ = step(0.985, hash21(floor(uvXZ * _SparkleScale)));
                 float spXY = step(0.985, hash21(floor(uvXY * _SparkleScale)));
                 float spYZ = step(0.985, hash21(floor(uvYZ * _SparkleScale)));
                 float sparkle = spXZ * weights.y + spXY * weights.z + spYZ * weights.x;
-                albedo += sparkle * _SparkleStrength * (1.0 - IN.wetness);
+                albedo += sparkle * _SparkleStrength * (1.0 - wetness);
 
                 // Lambert 光照
                 float3 N = normalize(IN.normalWS);
@@ -150,7 +156,7 @@ Shader "Sandcastle/Sand"
                 // 湿沙反光
                 float3 V = normalize(GetWorldSpaceViewDir(IN.positionWS));
                 float3 H = normalize(mainLight.direction + V);
-                float spec = pow(saturate(dot(N, H)), 64.0) * IN.wetness * 0.3;
+                float spec = pow(saturate(dot(N, H)), 64.0) * wetness * 0.3;
 
                 float3 color = diffuse + ambient + spec;
                 color = MixFog(color, IN.fogCoord);
