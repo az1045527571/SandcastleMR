@@ -30,6 +30,8 @@ namespace Sandcastle
         public float erodePerSecond = 0.02f;
         [Tooltip("侵蚀作用范围: 离水位多少米内的体素受侵蚀")]
         public float erodeBandHeight = 1.0f;
+        [Tooltip("侵蚀过程中多久重建一次 mesh（秒）。越小衰减越连贯但越卡")]
+        public float rebuildInterval = 0.25f;
 
         [Header("湿度")]
         [Tooltip("湿度蒸发速率（每秒）")]
@@ -43,6 +45,8 @@ namespace Sandcastle
         private float _t;
         private float _currentLevel;
         private bool _eroding;
+        private float _rebuildTimer;
+        private ErosionParticles _particles;
 
         public float CurrentWaterLevel => _currentLevel;
 
@@ -51,6 +55,7 @@ namespace Sandcastle
             if (sdfVolume == null) sdfVolume = FindObjectOfType<SdfVolume>();
             if (simpleWave == null) simpleWave = FindObjectOfType<SimpleWave>();
             _terrain = FindObjectOfType<SandTerrain>();
+            _particles = ErosionParticles.Create(transform);
             // 延迟一帧初始化，让 SimpleWave.Start 先完成定位
             StartCoroutine(InitWaterLevel());
         }
@@ -100,6 +105,18 @@ namespace Sandcastle
                 sdfVolume.SurfaceErode(_currentLevel, erodePerSecond * Time.deltaTime, erodeBandHeight);
                 _eroding = true;
 
+                // 碎屑粒子特效：在被冲掉的表面体素位置喷沙
+                if (_particles != null)
+                    _particles.Emit(sdfVolume.LastErodedPoints);
+
+                // 侵蚀过程中阶段性重建 mesh，让“化开”过程连贯可见，而不是只在退潮才跳变
+                _rebuildTimer += Time.deltaTime;
+                if (_rebuildTimer >= rebuildInterval)
+                {
+                    sdfVolume.RebuildMesh();
+                    _rebuildTimer = 0f;
+                }
+
                 // SandTerrain 也变湿（SDF 区域外的沙地）
                 if (_terrain != null)
                 {
@@ -111,6 +128,7 @@ namespace Sandcastle
                 // 退潮时刷新一次 mesh，让积累的侵蚀显现
                 sdfVolume.RebuildMesh();
                 _eroding = false;
+                _rebuildTimer = 0f;
                 Debug.Log($"[Wave] 退潮重建, 水位峰值 {baseWaterLevel + waveAmplitude:F3}");
             }
 

@@ -36,6 +36,15 @@ namespace Sandcastle
         public bool includeTerrain = true;
         public float terrainSmoothK = 0.15f;
 
+        [Header("侵蚀")]
+        [Tooltip("湿沙抗侵蚀强度。0=湿沙照常被冲, 1=完全湿沙不被侵蚀")]
+        [Range(0f, 1f)]
+        public float wetResistance = 0.85f;
+
+        // 本次侵蚀中刚刚被冲成空气的体素世界坐标（供粒子特效用，每次 SurfaceErode 清空重填）
+        public readonly List<Vector3> LastErodedPoints = new List<Vector3>(64);
+        private const int MaxErodedPoints = 48;
+
         // 体素数据
         private float[] _sdf;
         private float[] _sdfBase;
@@ -131,13 +140,16 @@ namespace Sandcastle
         /// 增加那些体素的侵蚀场。调用后需手动 RebuildMesh()。
         /// </summary>
         /// <summary>
-        /// 均匀表面侵蚀：所有 SDF 表面附近的体素给予同样的侵蚀量。
-        /// 这样沙堡边缘会“化开”，整体变小变圆，而不是底部被断。
-        /// 只作用于海面以下一定范围内的实体。
+        /// 均匀表面侵蚀（形态学腐蚀）：在侵蚀带内给所有体素的 SDF 整体加上一个偏移量。
+        /// SDF 整体 +amount 等价于表面沿法线向内后退 amount 米，于是沙堡逐层“化开”，
+        /// 凸出的尖角比平面后退得快，整体变小变圆。
+        /// 湿沙（_wetness）会按 wetResistance 减缓侵蚀。
+        /// 只作用于水面以下一定带幅内的体素。调用后需 RebuildMesh()。
         /// </summary>
         public void SurfaceErode(float waterY, float amount, float bandHeight)
         {
             float dy = size.y / resolutionY;
+            LastErodedPoints.Clear();
 
             for (int z = 0; z < Nz; z++)
             {
@@ -145,48 +157,68 @@ namespace Sandcastle
                 {
                     float localY = y * dy;
                     float worldY = LocalToWorld(new Vector3(0, localY, 0)).y;
-                    // 只侵蚀海面以下 5cm 到以上 30cm 范围内的体素
-                    if (worldY > waterY + 0.30f) continue;
+                    // 只侵蚀海面以下 5cm 到海面以上 bandHeight 范围内的体素
+                    if (worldY > waterY + bandHeight) continue;
                     if (worldY < waterY - 0.05f) continue;
                     for (int x = 0; x < Nx; x++)
                     {
                         int idx = Index(x, y, z);
+                        // 被海水泡到 = 变湿（只是描述表面被水打湿，不代表玩家浇水的护城河效果）
+                        if (worldY <= waterY)
+                            _wetness[idx] = Mathf.Max(_wetness[idx], 0.5f);
+
                         float curr = _sdfBase[idx] + _erosion[idx];
-                        // 被海水泡到 = 变湿
-                        if (worldY <= waterY) _wetness[idx] = 1f;
-                        // 只侵蚀表面体素（负但靠近 0）——这样表面后退，下层变表面，下次再被侵蚀
-                        if (curr > 0f) continue;
-                        if (curr < -0.03f) continue;  // 只侵蚀最表面的一层
-                        _erosion[idx] += amount;
+                        if (curr > 0f) continue;        // 空气不侵蚀
+
+                        // 湿沙抗侵蚀：湿度越高侵蚀量越少
+                        float resist = 1f - _wetness[idx] * wetResistance;
+                        if (resist <= 0f) continue;
+                        float applied = amount * resist;
+                        _erosion[idx] += applied;
+
+                        // 表面体素被冲成空气的瞬间，记录为碎屑粒子的生成点
+                        if (curr > -0.02f && (_sdfBase[idx] + _erosion[idx]) > 0f
+                            && LastErodedPoints.Count < MaxErodedPoints)
+                        {
+                            Vector3 lp = new Vector3(x * (size.x / resolutionX), localY, z * (size.z / resolutionZ));
+                            LastErodedPoints.Add(LocalToWorld(lp));
+                        }
                     }
                 }
             }
         }
-        {
-            float dy = size.y / resolutionY;
 
+        /// <summary>
+        /// 玩家浇水：在世界坐标 center 周围 radius 米内增加体素湿度。
+        /// 湿沙会按 wetResistance 抵抗海浪侵蚀，打造护城河/加固效果。
+        /// </summary>
+        public void WetVolume(Vector3 worldCenter, float radius, float amount)
+        {
+            float dx = size.x / resolutionX;
+            float dy = size.y / resolutionY;
+            float dz = size.z / resolutionZ;
+            float r2 = radius * radius;
             for (int z = 0; z < Nz; z++)
             {
                 for (int y = 0; y < Ny; y++)
                 {
-                    float localY = y * dy;
-                    float worldY = LocalToWorld(new Vector3(0, localY, 0)).y;
-                    if (worldY > waterY) continue;
-                    if (worldY < waterY - bandHeight) continue;
                     for (int x = 0; x < Nx; x++)
                     {
+                        Vector3 wp = LocalToWorld(new Vector3(x * dx, y * dy, z * dz));
+                        float d2 = (wp - worldCenter).sqrMagnitude;
+                        if (d2 > r2) continue;
                         int idx = Index(x, y, z);
-                        float baseVal = _sdfBase[idx] + _erosion[idx];
-                        if (baseVal > 0f) continue;      // 空气不侵蚀
-                        // 被海水泡到就变湿
-                        _wetness[idx] = 1f;
-                        // 侵蚀：只侵蚀表面附近（SDF 在 -0.15 ~ 0 范围）但受侵蚀后会逐层暴露新表面
-                        if (baseVal < -0.15f) continue;
-                        _erosion[idx] += amount;
+                        // 只给实体体素加湿
+                        if (_sdfBase[idx] + _erosion[idx] > 0.02f) continue;
+                        float falloff = 1f - Mathf.Sqrt(d2) / radius;
+                        _wetness[idx] = Mathf.Clamp01(_wetness[idx] + amount * falloff);
                     }
                 }
             }
         }
+
+        /// <summary>湿度是否需要重建 mesh 以显示湿沙色。仅在玩家浇水后调。</summary>
+        public void RefreshWetnessVisual() => RebuildMesh();
 
         /// <summary>每帧调一次让湿度蒸发。应在 Update 里调。</summary>
         public void DecayWetness(float decayPerSecond)

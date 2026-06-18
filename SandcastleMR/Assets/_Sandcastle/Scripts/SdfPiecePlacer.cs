@@ -32,6 +32,12 @@ public class SdfPiecePlacer : MonoBehaviour
 
     public float rotateSpeed = 120f;
 
+    [Header("浇水 (按住 V)")]
+    [Tooltip("浇水半径（米）")]
+    public float wetRadius = 0.4f;
+    [Tooltip("每秒增加湿度")]
+    public float wetPerSecond = 1.5f;
+
     private enum Mode { Sphere, Baked }
     private Mode _mode = Mode.Sphere;
     private int _bakedIndex = 0;
@@ -111,6 +117,19 @@ public class SdfPiecePlacer : MonoBehaviour
         // R 旋转
         if (Input.GetKey(KeyCode.R))
             _currentRotY += rotateSpeed * Time.deltaTime;
+
+        // V 浇水：让鼠标指向的沙变湿，湿沙抗侵蚀
+        if (Input.GetKey(KeyCode.V))
+        {
+            Ray wetRay = _cam.ScreenPointToRay(Input.mousePosition);
+            if (Physics.Raycast(wetRay, out RaycastHit wetHit, 100f))
+            {
+                _volume.WetVolume(wetHit.point, wetRadius, wetPerSecond * Time.deltaTime);
+                _volume.RefreshWetnessVisual();
+                if (_terrain != null)
+                    _terrain.Wet(wetHit.point, wetRadius, wetPerSecond * Time.deltaTime);
+            }
+        }
 
         // 射线
         Ray ray = _cam.ScreenPointToRay(Input.mousePosition);
