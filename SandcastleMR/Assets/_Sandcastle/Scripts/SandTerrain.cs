@@ -354,8 +354,8 @@ public class SandTerrain : MonoBehaviour
         }
 
         Vector3 selfPos = transform.position;
-        float halfX = vSize.x * 0.5f;
-        float halfZ = vSize.z * 0.5f;
+        float halfX = vSize.x * 0.5f * 0.75f;  // 挖洞范围比 SDF 体积小 25%，边缘重叠避免缝隙
+        float halfZ = vSize.z * 0.5f * 0.75f;
 
         for (int i = 0; i < _verts.Length; i++)
         {
