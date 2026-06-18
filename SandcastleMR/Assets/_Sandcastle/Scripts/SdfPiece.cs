@@ -15,7 +15,7 @@ namespace Sandcastle
 
         [Header("形状")]
         public ShapeType shape = ShapeType.Sphere;
-        public float radius = 0.3f;  // 单位：米（4cm 默认）
+        public float radius = 0.8f;  // 单位：米（4cm 默认）
 
         private SdfVolume _volume;
 
