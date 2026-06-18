@@ -13,7 +13,7 @@ public class SimpleWave : MonoBehaviour
 
     [Header("高度")]
     [Tooltip("相对 SandTerrain 表面抬高多少米")]
-    public float heightAboveSand = 0.10f;
+    public float heightAboveSand = 0.02f;
 
     [Header("波浪")]
     public float waveHeight = 0.02f;

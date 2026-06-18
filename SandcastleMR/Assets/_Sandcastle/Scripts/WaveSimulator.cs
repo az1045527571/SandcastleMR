@@ -16,7 +16,7 @@ namespace Sandcastle
         [Tooltip("基础水位（世界 Y）")]
         public float baseWaterLevel = 0f;
         [Tooltip("涨潮峰值水位（高于基础水位多少米）")]
-        public float waveAmplitude = 0.08f;
+        public float waveAmplitude = 0.04f;
 
         [Header("周期")]
         [Tooltip("涨潮周期（秒）")]
@@ -29,7 +29,7 @@ namespace Sandcastle
         [Tooltip("浪头每秒侵蚀量（米）。SDF值往正方向加，表面后退")]
         public float erodePerSecond = 0.05f;
         [Tooltip("侵蚀作用范围: 离水位多少米内的体素受侵蚀")]
-        public float erodeBandHeight = 0.05f;
+        public float erodeBandHeight = 1.0f;
 
         [Header("引用")]
         public SdfVolume sdfVolume;
