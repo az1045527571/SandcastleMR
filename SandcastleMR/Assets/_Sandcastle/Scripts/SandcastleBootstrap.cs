@@ -57,13 +57,13 @@ public class SandcastleBootstrap : MonoBehaviour
 
     void BuildBeach()
     {
-        var beach = GameObject.CreatePrimitive(PrimitiveType.Plane);
-        beach.name = "Beach";
+        var beach = new GameObject("SandTerrain");
         beach.transform.SetParent(transform, false);
-        // Unity Plane 默认 10x10，这里按 beachSize 缩放
-        beach.transform.localScale = new Vector3(beachSize.x / 10f, 1f, beachSize.y / 10f);
+        var mf = beach.AddComponent<MeshFilter>();
+        var mr = beach.AddComponent<MeshRenderer>();
+        var mc = beach.AddComponent<MeshCollider>();
 
-        // 找 Sand shader，找不到就退回 URP/Lit
+        // 提前赋材质，避免 SandTerrain.Awake 创建重复材质
         Shader sandShader = Shader.Find("Sandcastle/Sand");
         Material mat;
         if (sandShader != null)
@@ -73,12 +73,19 @@ public class SandcastleBootstrap : MonoBehaviour
         }
         else
         {
-            Shader urpLit = Shader.Find("Universal Render Pipeline/Lit");
-            mat = new Material(urpLit);
+            mat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
             mat.SetColor("_BaseColor", sandColor);
             mat.SetFloat("_Smoothness", 0.1f);
         }
-        beach.GetComponent<Renderer>().sharedMaterial = mat;
+        mr.sharedMaterial = mat;
+
+        var terrain = beach.AddComponent<SandTerrain>();
+        terrain.size = Mathf.Max(beachSize.x, beachSize.y);
+
+        // 挂上笔刷
+        var brushGo = new GameObject("SandBrush");
+        brushGo.transform.SetParent(transform, false);
+        brushGo.AddComponent<SandBrush>();
     }
 
     void BuildWater()

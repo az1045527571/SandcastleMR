@@ -2,13 +2,12 @@ Shader "Sandcastle/Sand"
 {
     Properties
     {
-        _BaseColor ("Base Color", Color) = (0.92, 0.82, 0.62, 1)
-        _DarkColor ("Dark Color (湿沙色)", Color) = (0.55, 0.45, 0.32, 1)
+        _BaseColor ("Base Color (干沙)", Color) = (0.92, 0.82, 0.62, 1)
+        _WetColor ("Wet Color (湿沙)", Color) = (0.55, 0.45, 0.32, 1)
         _NoiseScale ("Noise Scale", Float) = 6.0
         _NoiseStrength ("Noise Strength", Range(0,1)) = 0.25
         _SparkleStrength ("Sparkle Strength", Range(0,1)) = 0.3
         _SparkleScale ("Sparkle Scale", Float) = 80.0
-        _Smoothness ("Smoothness", Range(0,1)) = 0.1
     }
 
     SubShader
@@ -24,7 +23,6 @@ Shader "Sandcastle/Sand"
             HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
-
             #pragma multi_compile_fog
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
@@ -32,12 +30,11 @@ Shader "Sandcastle/Sand"
 
             CBUFFER_START(UnityPerMaterial)
                 float4 _BaseColor;
-                float4 _DarkColor;
+                float4 _WetColor;
                 float _NoiseScale;
                 float _NoiseStrength;
                 float _SparkleStrength;
                 float _SparkleScale;
-                float _Smoothness;
             CBUFFER_END
 
             struct Attributes
@@ -45,6 +42,7 @@ Shader "Sandcastle/Sand"
                 float4 positionOS : POSITION;
                 float3 normalOS   : NORMAL;
                 float2 uv         : TEXCOORD0;
+                float4 color      : COLOR;  // R = wetness
             };
 
             struct Varyings
@@ -54,9 +52,9 @@ Shader "Sandcastle/Sand"
                 float3 normalWS    : TEXCOORD1;
                 float2 uv          : TEXCOORD2;
                 float  fogCoord    : TEXCOORD3;
+                float  wetness     : TEXCOORD4;
             };
 
-            // 简易 hash + value noise
             float hash21(float2 p)
             {
                 p = frac(p * float2(123.34, 456.21));
@@ -80,7 +78,7 @@ Shader "Sandcastle/Sand"
             {
                 float v = 0.0;
                 float amp = 0.5;
-                for (int i = 0; i < 4; i++)
+                for (int i = 0; i < 3; i++)
                 {
                     v += valueNoise(p) * amp;
                     p *= 2.0;
@@ -99,42 +97,52 @@ Shader "Sandcastle/Sand"
                 OUT.normalWS    = vni.normalWS;
                 OUT.uv          = IN.uv;
                 OUT.fogCoord    = ComputeFogFactor(vpi.positionCS.z);
+                OUT.wetness     = IN.color.r;
                 return OUT;
             }
 
             half4 frag(Varyings IN) : SV_Target
             {
-                // 用世界坐标 XZ 平面采样，避免接缝
                 float2 wpos = IN.positionWS.xz;
 
-                // 大尺度起伏 + 小颗粒
+                // 噪声纹理
                 float n = fbm(wpos * _NoiseScale * 0.1);
                 float grain = valueNoise(wpos * _NoiseScale);
                 float blend = saturate(n * 0.7 + grain * 0.3);
 
-                float3 albedo = lerp(_DarkColor.rgb, _BaseColor.rgb, blend * _NoiseStrength + (1.0 - _NoiseStrength));
+                // 干沙颜色 + 噪声
+                float3 dryColor = _BaseColor.rgb * (blend * _NoiseStrength + (1.0 - _NoiseStrength));
 
-                // 闪光颗粒（白色高光小点）
+                // 湿沙颜色
+                float3 wetColor = _WetColor.rgb * (blend * _NoiseStrength * 0.5 + (1.0 - _NoiseStrength * 0.5));
+
+                // 按湿度混合
+                float3 albedo = lerp(dryColor, wetColor, IN.wetness);
+
+                // 闪光颗粒（干沙才有）
                 float sparkle = step(0.985, hash21(floor(wpos * _SparkleScale)));
-                albedo += sparkle * _SparkleStrength;
+                albedo += sparkle * _SparkleStrength * (1.0 - IN.wetness);
 
-                // 简单 Lambert + 主光
+                // Lambert 光照
                 float3 N = normalize(IN.normalWS);
                 Light mainLight = GetMainLight();
                 float NdotL = saturate(dot(N, mainLight.direction));
                 float3 diffuse = albedo * mainLight.color.rgb * NdotL;
 
-                // 环境光近似
+                // 环境光
                 float3 ambient = SampleSH(N) * albedo;
 
-                float3 color = diffuse + ambient;
+                // 湿沙有微弱反光
+                float3 V = normalize(GetWorldSpaceViewDir(IN.positionWS));
+                float3 H = normalize(mainLight.direction + V);
+                float spec = pow(saturate(dot(N, H)), 64.0) * IN.wetness * 0.3;
 
+                float3 color = diffuse + ambient + spec;
                 color = MixFog(color, IN.fogCoord);
                 return half4(color, 1);
             }
             ENDHLSL
         }
-
     }
     FallBack "Universal Render Pipeline/Lit"
 }
