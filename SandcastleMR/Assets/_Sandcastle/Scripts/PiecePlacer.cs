@@ -123,20 +123,16 @@ public class PiecePlacer : MonoBehaviour
         var prefab = piecePrefabs[_selectedIndex];
         var go = Instantiate(prefab);
         go.name = prefab.name + "_placed";
+        go.SetActive(true);
         go.transform.position = hit.point;
         go.transform.rotation = Quaternion.Euler(0f, _currentRotY, 0f);
         go.transform.localScale = Vector3.one * _currentScale;
 
+        // 重新创建不透明材质（prefab 本身的材质是不透明的，Instantiate 会复制应用，不需要额外处理）
+
         // 确保有 CastlePiece 组件
         if (go.GetComponent<CastlePiece>() == null)
             go.AddComponent<CastlePiece>();
-
-        // 确保有 Collider 用于之后的删除射线
-        if (go.GetComponent<Collider>() == null)
-            go.AddComponent<MeshCollider>();
-
-        // 移除半透明预览材质，恢复实体
-        SetMaterialOpaque(go);
     }
 
     void DeletePiece()
@@ -158,7 +154,7 @@ public class PiecePlacer : MonoBehaviour
         var prefab = piecePrefabs[_selectedIndex];
         _preview = Instantiate(prefab);
         _preview.name = "PiecePreview";
-        _preview.SetActive(false);
+        _preview.SetActive(true);  // 先启用才能拿到 Renderer、Collider
 
         // 移除 Collider（预览不参与物理）
         foreach (var col in _preview.GetComponentsInChildren<Collider>())
