@@ -43,6 +43,13 @@ namespace Sandcastle
             float[] sdf = _volume.GetSdfData();
             if (sdf == null) return;
 
+            // 统计当前实心体素数
+            int solidCount = 0;
+            for (int i = 0; i < sdf.Length; i++)
+                if (sdf[i] < 0f) solidCount++;
+
+            Debug.Log($"[Collapse] 检测中... 实心体素={solidCount}, 总体素={sdf.Length}");
+
             // Flood fill 从底层（y=0）开始，标记所有连着底面的实心体素
             bool[] supported = new bool[sdf.Length];
             Queue<int> queue = new Queue<int>();

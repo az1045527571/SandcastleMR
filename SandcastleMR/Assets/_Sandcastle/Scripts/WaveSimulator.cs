@@ -16,18 +16,18 @@ namespace Sandcastle
         [Tooltip("基础水位（世界 Y）")]
         public float baseWaterLevel = 0f;
         [Tooltip("涨潮峰值水位（高于基础水位多少米）")]
-        public float waveAmplitude = 0.04f;
+        public float waveAmplitude = 0.10f;
 
         [Header("周期")]
         [Tooltip("涨潮周期（秒）")]
-        public float wavePeriod = 6f;
+        public float wavePeriod = 3f;
         [Tooltip("每个周期内浪头持续比例（0~1，0.3=30%时间在浪上）")]
         [Range(0.05f, 0.8f)]
         public float surgeRatio = 0.3f;
 
         [Header("侵蚀")]
         [Tooltip("浪头每秒侵蚀量（米）。SDF值往正方向加，表面后退")]
-        public float erodePerSecond = 0.15f;
+        public float erodePerSecond = 0.5f;
         [Tooltip("侵蚀作用范围: 离水位多少米内的体素受侵蚀")]
         public float erodeBandHeight = 1.0f;
 
@@ -110,6 +110,7 @@ namespace Sandcastle
                 // 退潮时刷新一次 mesh，让积累的侵蚀显现
                 sdfVolume.RebuildMesh();
                 _eroding = false;
+                Debug.Log($"[Wave] 退潮重建, 水位峰值 {baseWaterLevel + waveAmplitude:F3}");
             }
 
             // 湿度蒸发
