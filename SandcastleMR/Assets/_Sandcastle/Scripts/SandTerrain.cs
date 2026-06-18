@@ -368,7 +368,8 @@ public class SandTerrain : MonoBehaviour
                 float wz = selfPos.z + _verts[i].z;
                 if (Mathf.Abs(wx - vCenter.x) <= halfX && Mathf.Abs(wz - vCenter.z) <= halfZ)
                 {
-                    y = -100f;
+                    // 下沉一点就够，不要太多，避免形成几何柱子
+                    y -= 0.5f;
                 }
             }
 

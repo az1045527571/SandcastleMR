@@ -53,6 +53,7 @@ namespace Sandcastle
         private List<Vector3> _vertBuf = new List<Vector3>(8192);
         private List<int> _triBuf = new List<int>(16384);
         private List<Color> _colorBuf = new List<Color>(8192);
+        private List<Vector3> _normalBuf = new List<Vector3>(8192);
 
         void Awake()
         {
@@ -154,12 +155,61 @@ namespace Sandcastle
 
         int Index(int x, int y, int z) => x + y * Nx + z * Nx * Ny;
 
+        /// <summary>三线性采样 SDF（入参 = 体积局部坐标，角落原点 [0,size]）</summary>
+        float SampleSdfAtLocal(Vector3 localPos)
+        {
+            float dx = size.x / resolutionX;
+            float dy = size.y / resolutionY;
+            float dz = size.z / resolutionZ;
+            float fx = Mathf.Clamp(localPos.x / dx, 0, resolutionX);
+            float fy = Mathf.Clamp(localPos.y / dy, 0, resolutionY);
+            float fz = Mathf.Clamp(localPos.z / dz, 0, resolutionZ);
+            int x0 = Mathf.FloorToInt(fx);
+            int y0 = Mathf.FloorToInt(fy);
+            int z0 = Mathf.FloorToInt(fz);
+            int x1 = Mathf.Min(x0 + 1, resolutionX);
+            int y1 = Mathf.Min(y0 + 1, resolutionY);
+            int z1 = Mathf.Min(z0 + 1, resolutionZ);
+            float tx = fx - x0;
+            float ty = fy - y0;
+            float tz = fz - z0;
+            float c000 = _sdf[Index(x0, y0, z0)];
+            float c100 = _sdf[Index(x1, y0, z0)];
+            float c010 = _sdf[Index(x0, y1, z0)];
+            float c110 = _sdf[Index(x1, y1, z0)];
+            float c001 = _sdf[Index(x0, y0, z1)];
+            float c101 = _sdf[Index(x1, y0, z1)];
+            float c011 = _sdf[Index(x0, y1, z1)];
+            float c111 = _sdf[Index(x1, y1, z1)];
+            float c00 = Mathf.Lerp(c000, c100, tx);
+            float c10 = Mathf.Lerp(c010, c110, tx);
+            float c01 = Mathf.Lerp(c001, c101, tx);
+            float c11 = Mathf.Lerp(c011, c111, tx);
+            float c0 = Mathf.Lerp(c00, c10, ty);
+            float c1 = Mathf.Lerp(c01, c11, ty);
+            return Mathf.Lerp(c0, c1, tz);
+        }
+
+        /// <summary>SDF 梯度作为顶点法线，实现平滑着色</summary>
+        Vector3 SdfGradient(Vector3 localPos)
+        {
+            float eps = Mathf.Min(size.x / resolutionX, size.y / resolutionY) * 0.5f;
+            float gx = SampleSdfAtLocal(localPos + new Vector3(eps, 0, 0)) - SampleSdfAtLocal(localPos - new Vector3(eps, 0, 0));
+            float gy = SampleSdfAtLocal(localPos + new Vector3(0, eps, 0)) - SampleSdfAtLocal(localPos - new Vector3(0, eps, 0));
+            float gz = SampleSdfAtLocal(localPos + new Vector3(0, 0, eps)) - SampleSdfAtLocal(localPos - new Vector3(0, 0, eps));
+            Vector3 g = new Vector3(gx, gy, gz);
+            float m = g.magnitude;
+            if (m < 1e-6f) return Vector3.up;
+            return g / m;
+        }
+
         /// <summary>Marching Cubes 提取 mesh（CPU 版）。</summary>
         void ExtractMesh()
         {
             _vertBuf.Clear();
             _triBuf.Clear();
             _colorBuf.Clear();
+            _normalBuf.Clear();
 
             float dx = size.x / resolutionX;
             float dy = size.y / resolutionY;
@@ -233,6 +283,10 @@ namespace Sandcastle
                             _vertBuf.Add(v0);
                             _vertBuf.Add(v1);
                             _vertBuf.Add(v2);
+                            // 顶点法线 = SDF 梯度（平滑着色）
+                            _normalBuf.Add(SdfGradient(v0 + size * 0.5f));
+                            _normalBuf.Add(SdfGradient(v1 + size * 0.5f));
+                            _normalBuf.Add(SdfGradient(v2 + size * 0.5f));
                             // 默认干沙（wetness=0）
                             _colorBuf.Add(Color.black);
                             _colorBuf.Add(Color.black);
@@ -250,7 +304,7 @@ namespace Sandcastle
             _mesh.SetVertices(_vertBuf);
             _mesh.SetColors(_colorBuf);
             _mesh.SetTriangles(_triBuf, 0);
-            _mesh.RecalculateNormals();
+            _mesh.SetNormals(_normalBuf);
             _mesh.RecalculateBounds();
         }
 
