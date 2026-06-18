@@ -7,10 +7,11 @@ Shader "Sandcastle/CastlePiece"
         _Smoothness ("Smoothness", Range(0,1)) = 0.15
 
         [Header(Blend Settings)]
-        _BlendHeight ("Blend Height (融合带高度/米)", Float) = 0.25
+        _BlendHeight ("Blend Height (融合带高度/米)", Float) = 0.4
         _BlendOffset ("Blend Offset (从沙面往上偏移)", Float) = 0.02
         _NoiseScale ("Noise Scale (融合边缘噪声)", Float) = 12.0
         _NoiseStrength ("Noise Strength", Range(0,0.3)) = 0.1
+        _PieceBaseY ("Piece Base Y (脚下沙面世界高度)", Float) = 0.0
     }
 
     SubShader
@@ -39,11 +40,12 @@ Shader "Sandcastle/CastlePiece"
                 float _BlendOffset;
                 float _NoiseScale;
                 float _NoiseStrength;
+                float _PieceBaseY;
             CBUFFER_END
 
             // 从 SandTerrain 脚本传入的全局变量
-            float _SandTerrainMinY;  // 地形最低点世界Y
-            float _SandTerrainMaxY;  // 地形最高点世界Y
+            float _SandTerrainMinY;
+            float _SandTerrainMaxY;
 
             struct Attributes
             {
@@ -94,11 +96,8 @@ Shader "Sandcastle/CastlePiece"
             {
                 float3 posWS = IN.positionWS;
 
-                // 计算该片元相对于沙面的高度
-                // 用全局变量 _SandTerrainMinY 作为沙面基准
-                // （简化：假设构件脚下沙面 ≈ _SandTerrainMinY + Pile 的高度）
-                // 更精确的做法是采样高度图 RT，但对原型够用
-                float sandSurface = _SandTerrainMinY + _BlendOffset;
+            // 从 SandTerrain 全局变量读基准，但优先用每个实例的 _PieceBaseY（该构件脚下的沙面高度）
+            float sandSurface = _PieceBaseY + _BlendOffset;
                 float heightAboveSand = posWS.y - sandSurface;
 
                 // 噪声扰动融合边缘，避免完美水平切割

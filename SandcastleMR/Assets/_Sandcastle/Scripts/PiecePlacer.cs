@@ -130,8 +130,9 @@ public class PiecePlacer : MonoBehaviour
             col.height = 1.2f;
         }
 
-        // 设置不透明材质
+        // 设置不透明材质，并传入脚下沙面高度
         SetMaterialOpaque(go);
+        SetPieceBaseY(go, hit.point.y);
 
         // 在塔脚下堆出沙堆基座
         var piece = go.GetComponent<CastlePiece>();
@@ -188,6 +189,18 @@ public class PiecePlacer : MonoBehaviour
                 mat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
                 mat.SetInt("_ZWrite", 0);
                 mat.renderQueue = 3000;
+            }
+        }
+    }
+
+    void SetPieceBaseY(GameObject go, float y)
+    {
+        foreach (var r in go.GetComponentsInChildren<Renderer>())
+        {
+            foreach (var mat in r.materials)
+            {
+                if (mat.HasProperty("_PieceBaseY"))
+                    mat.SetFloat("_PieceBaseY", y);
             }
         }
     }
