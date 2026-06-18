@@ -25,13 +25,10 @@ Shader "Sandcastle/Sand"
             #pragma vertex vert
             #pragma fragment frag
 
-            #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE _MAIN_LIGHT_SHADOWS_SCREEN
-            #pragma multi_compile _ _SHADOWS_SOFT
             #pragma multi_compile_fog
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
-            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.hlsl"
 
             CBUFFER_START(UnityPerMaterial)
                 float4 _BaseColor;
@@ -121,11 +118,11 @@ Shader "Sandcastle/Sand"
                 float sparkle = step(0.985, hash21(floor(wpos * _SparkleScale)));
                 albedo += sparkle * _SparkleStrength;
 
-                // 简单 Lambert + 主光阴影
+                // 简单 Lambert + 主光
                 float3 N = normalize(IN.normalWS);
-                Light mainLight = GetMainLight(TransformWorldToShadowCoord(IN.positionWS));
+                Light mainLight = GetMainLight();
                 float NdotL = saturate(dot(N, mainLight.direction));
-                float3 diffuse = albedo * mainLight.color.rgb * NdotL * mainLight.shadowAttenuation;
+                float3 diffuse = albedo * mainLight.color.rgb * NdotL;
 
                 // 环境光近似
                 float3 ambient = SampleSH(N) * albedo;
@@ -138,64 +135,6 @@ Shader "Sandcastle/Sand"
             ENDHLSL
         }
 
-        // 阴影投射 Pass
-        Pass
-        {
-            Name "ShadowCaster"
-            Tags { "LightMode"="ShadowCaster" }
-
-            ZWrite On
-            ZTest LEqual
-            ColorMask 0
-
-            HLSLPROGRAM
-            #pragma vertex ShadowPassVertex
-            #pragma fragment ShadowPassFragment
-
-            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
-            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.hlsl"
-
-            CBUFFER_START(UnityPerMaterial)
-                float4 _BaseColor;
-                float4 _DarkColor;
-                float _NoiseScale;
-                float _NoiseStrength;
-                float _SparkleStrength;
-                float _SparkleScale;
-                float _Smoothness;
-            CBUFFER_END
-
-            float3 _LightDirection;
-
-            struct Attributes
-            {
-                float4 positionOS : POSITION;
-                float3 normalOS   : NORMAL;
-            };
-
-            struct Varyings
-            {
-                float4 positionCS : SV_POSITION;
-            };
-
-            Varyings ShadowPassVertex(Attributes IN)
-            {
-                Varyings OUT;
-                float3 positionWS = TransformObjectToWorld(IN.positionOS.xyz);
-                float3 normalWS = TransformObjectToWorldNormal(IN.normalOS);
-                float4 positionCS = TransformWorldToHClip(ApplyShadowBias(positionWS, normalWS, _LightDirection));
-                #if UNITY_REVERSED_Z
-                    positionCS.z = min(positionCS.z, UNITY_NEAR_CLIP_VALUE);
-                #else
-                    positionCS.z = max(positionCS.z, UNITY_NEAR_CLIP_VALUE);
-                #endif
-                OUT.positionCS = positionCS;
-                return OUT;
-            }
-
-            half4 ShadowPassFragment(Varyings IN) : SV_Target { return 0; }
-            ENDHLSL
-        }
     }
     FallBack "Universal Render Pipeline/Lit"
 }
