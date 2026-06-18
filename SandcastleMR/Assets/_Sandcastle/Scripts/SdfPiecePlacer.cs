@@ -92,15 +92,20 @@ public class SdfPiecePlacer : MonoBehaviour
             }
         }
 
-        // Shift+滚轮调大小（裸滚轮保留给相机缩放）
-        float scroll = Input.GetAxis("Mouse ScrollWheel");
-        bool shiftHeld = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
-        if (shiftHeld && Mathf.Abs(scroll) > 0.001f)
+        // +/- 调大小
+        if (Input.GetKey(KeyCode.Equals) || Input.GetKey(KeyCode.KeypadPlus))
         {
             if (_mode == Mode.Sphere)
-                _currentRadius = Mathf.Clamp(_currentRadius + scroll, minRadius, maxRadius);
+                _currentRadius = Mathf.Min(_currentRadius + 0.5f * Time.deltaTime, maxRadius);
             else
-                _currentBakedScale = Mathf.Clamp(_currentBakedScale + scroll * 2f, minBakedScale, maxBakedScale);
+                _currentBakedScale = Mathf.Min(_currentBakedScale + 1f * Time.deltaTime, maxBakedScale);
+        }
+        if (Input.GetKey(KeyCode.Minus) || Input.GetKey(KeyCode.KeypadMinus))
+        {
+            if (_mode == Mode.Sphere)
+                _currentRadius = Mathf.Max(_currentRadius - 0.5f * Time.deltaTime, minRadius);
+            else
+                _currentBakedScale = Mathf.Max(_currentBakedScale - 1f * Time.deltaTime, minBakedScale);
         }
 
         // R 旋转
