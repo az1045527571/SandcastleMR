@@ -12,9 +12,9 @@ using Sandcastle;
 public class SdfPiecePlacer : MonoBehaviour
 {
     [Header("SDF 球参数")]
-    public float defaultRadius = 0.8f;
+    public float defaultRadius = 0.5f;
     public float minRadius = 0.05f;
-    public float maxRadius = 1f;
+    public float maxRadius = 2f;
     public float radiusStep = 0.05f;
 
     private Camera _cam;
