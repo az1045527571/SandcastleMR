@@ -19,6 +19,7 @@ public class SdfPiecePlacer : MonoBehaviour
 
     private Camera _cam;
     private SdfVolume _volume;
+    private SandTerrain _terrain;
     private float _currentRadius;
     private GameObject _preview;
 
@@ -26,6 +27,7 @@ public class SdfPiecePlacer : MonoBehaviour
     {
         _cam = Camera.main;
         _volume = FindObjectOfType<SdfVolume>();
+        _terrain = FindObjectOfType<SandTerrain>();
         _currentRadius = defaultRadius;
         CreatePreview();
     }
@@ -88,6 +90,12 @@ public class SdfPiecePlacer : MonoBehaviour
         var piece = go.AddComponent<SdfPiece>();
         piece.shape = SdfPiece.ShapeType.Sphere;
         piece.radius = _currentRadius;
+
+        // 同步让沙地隆起
+        if (_terrain != null)
+        {
+            _terrain.Pile(pos, _currentRadius * 1.5f, _currentRadius * 0.4f);
+        }
     }
 
     void DeleteNearest(Ray ray)

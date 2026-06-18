@@ -99,9 +99,14 @@ public class SandcastleBootstrap : MonoBehaviour
         sdfGo.transform.localPosition = new Vector3(0f, 1f, 0f); // 体积底面在 Y=0(沙面)，顶部 Y=2
         sdfGo.AddComponent<MeshFilter>();
         var sdfMr = sdfGo.AddComponent<MeshRenderer>();
-        Shader sdfSandShader = Shader.Find("Sandcastle/Sand");
+        Shader sdfSandShader = Shader.Find("Sandcastle/CastlePiece");
+        if (sdfSandShader == null) sdfSandShader = Shader.Find("Sandcastle/Sand");
         if (sdfSandShader == null) sdfSandShader = Shader.Find("Universal Render Pipeline/Lit");
-        sdfMr.sharedMaterial = new Material(sdfSandShader);
+        var sdfMat = new Material(sdfSandShader);
+        // 让融合带足够大，保证 SDF mesh 贴近沙面那部分与沙地法线一致
+        if (sdfMat.HasProperty("_BlendHeight")) sdfMat.SetFloat("_BlendHeight", 0.4f);
+        if (sdfMat.HasProperty("_PieceBaseY")) sdfMat.SetFloat("_PieceBaseY", 0f);
+        sdfMr.sharedMaterial = sdfMat;
         sdfGo.AddComponent<SdfVolume>();
         sdfGo.AddComponent<SdfVolumeBoundsVisualizer>();
 
