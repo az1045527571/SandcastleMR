@@ -8,7 +8,12 @@ using UnityEngine;
 public class SimpleWave : MonoBehaviour
 {
     [Header("尺寸")]
-    public float size = 50f;
+    [Tooltip("如果场景内有 SandTerrain，按其大小化同一个水面")]
+    public float size = 25f;
+
+    [Header("高度")]
+    [Tooltip("相对 SandTerrain 表面抬高多少米")]
+    public float heightAboveSand = 0.10f;
 
     [Header("波浪")]
     public float waveHeight = 0.02f;
@@ -24,7 +29,18 @@ public class SimpleWave : MonoBehaviour
 
     void Start()
     {
-        // 创建一个细分平面
+        // 对齐 SandTerrain
+        Vector3 sandWorldPos = Vector3.zero;
+        float sandSurfaceY = 0f;
+        var terrain = FindObjectOfType<SandTerrain>();
+        if (terrain != null)
+        {
+            size = terrain.size;
+            sandWorldPos = terrain.transform.position;
+            sandSurfaceY = sandWorldPos.y + terrain.initialHeight;
+        }
+
+        // 创建细分平面
         _mesh = GeneratePlane(64, size);
         _baseVerts = _mesh.vertices.Clone() as Vector3[];
 
@@ -32,12 +48,11 @@ public class SimpleWave : MonoBehaviour
         mf.mesh = _mesh;
 
         var mr = gameObject.AddComponent<MeshRenderer>();
-        // 用 URP 透明 shader
         Shader shader = Shader.Find("Universal Render Pipeline/Lit");
         Material mat = new Material(shader);
         mat.SetColor("_BaseColor", shallowColor);
-        mat.SetFloat("_Surface", 1); // Transparent
-        mat.SetFloat("_Blend", 0);   // Alpha
+        mat.SetFloat("_Surface", 1);
+        mat.SetFloat("_Blend", 0);
         mat.SetFloat("_Smoothness", 0.9f);
         mat.SetFloat("_Metallic", 0f);
         mat.SetOverrideTag("RenderType", "Transparent");
@@ -48,8 +63,8 @@ public class SimpleWave : MonoBehaviour
         mat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
         mr.material = mat;
 
-        // 水面略低于沙滩
-        transform.position = new Vector3(0f, 0f, 0f);
+        // 水面与沙面 X/Z 对齐, Y 在沙面上方 heightAboveSand
+        transform.position = new Vector3(sandWorldPos.x, sandSurfaceY + heightAboveSand, sandWorldPos.z);
     }
 
     void Update()
