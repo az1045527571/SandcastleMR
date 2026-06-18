@@ -27,7 +27,7 @@ namespace Sandcastle
 
         [Header("侵蚀")]
         [Tooltip("浪头每秒侵蚀量（米）。SDF值往正方向加，表面后退")]
-        public float erodePerSecond = 0.05f;
+        public float erodePerSecond = 0.15f;
         [Tooltip("侵蚀作用范围: 离水位多少米内的体素受侵蚀")]
         public float erodeBandHeight = 1.0f;
 

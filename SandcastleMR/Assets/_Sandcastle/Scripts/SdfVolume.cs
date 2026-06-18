@@ -146,10 +146,11 @@ namespace Sandcastle
                     {
                         int idx = Index(x, y, z);
                         float baseVal = _sdfBase[idx] + _erosion[idx];
-                        if (baseVal > 0f) continue;      // 空气
-                        // 被海水泡到就变湿（不管是否表面）
+                        if (baseVal > 0f) continue;      // 空气不侵蚀
+                        // 被海水泡到就变湿
                         _wetness[idx] = 1f;
-                        if (baseVal < -0.05f) continue;  // 深处不侵蚀但依然湿
+                        // 侵蚀：只侵蚀表面附近（SDF 在 -0.15 ~ 0 范围）但受侵蚀后会逐层暴露新表面
+                        if (baseVal < -0.15f) continue;
                         _erosion[idx] += amount;
                     }
                 }
