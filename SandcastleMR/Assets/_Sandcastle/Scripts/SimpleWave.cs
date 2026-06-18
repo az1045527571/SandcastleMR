@@ -8,7 +8,7 @@ using UnityEngine;
 public class SimpleWave : MonoBehaviour
 {
     [Header("尺寸")]
-    public float size = 25f;
+    public float size = 50f;
 
     [Header("波浪")]
     public float waveHeight = 0.02f;

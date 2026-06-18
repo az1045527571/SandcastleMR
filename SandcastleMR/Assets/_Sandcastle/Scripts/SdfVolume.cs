@@ -18,7 +18,7 @@ namespace Sandcastle
     public class SdfVolume : MonoBehaviour
     {
         [Header("体积")]
-        public Vector3 size = new Vector3(5f, 0.6f, 5f);
+        public Vector3 size = new Vector3(5f, 1.5f, 5f);
         public int resolutionX = 96;
         public int resolutionY = 32;
         public int resolutionZ = 96;

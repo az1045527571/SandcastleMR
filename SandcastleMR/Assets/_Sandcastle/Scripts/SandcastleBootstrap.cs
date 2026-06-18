@@ -97,7 +97,7 @@ public class SandcastleBootstrap : MonoBehaviour
         // SDF 体积系统
         var sdfGo = new GameObject("SdfVolume");
         sdfGo.transform.SetParent(transform, false);
-        sdfGo.transform.localPosition = new Vector3(0f, 0.05f, 0f); // 体积中心 Y=0.05，范围 Y=-0.25~+0.35，跨越陆地和小岛顶
+        sdfGo.transform.localPosition = new Vector3(0f, 0.5f, 0f); // 中心Y=0.5, 范围-0.25~+1.25
         sdfGo.AddComponent<MeshFilter>();
         var sdfMr = sdfGo.AddComponent<MeshRenderer>();
         Shader sdfSandShader = Shader.Find("Sandcastle/Sand");
@@ -109,7 +109,7 @@ public class SandcastleBootstrap : MonoBehaviour
         // 在 SDF 体积底部加一个扁平 BoxCollider，用于接收射线放置球
         var sdfFloor = new GameObject("SdfFloor");
         sdfFloor.transform.SetParent(sdfGo.transform, false);
-        sdfFloor.transform.localPosition = new Vector3(0f, 0.07f, 0f); // 小岛顶附近 Y=0.12
+        sdfFloor.transform.localPosition = new Vector3(0f, -0.38f, 0f); // 相对体积中心0.5, 即世界Y=0.12
         var box = sdfFloor.AddComponent<BoxCollider>();
         box.size = new Vector3(5f, 0.02f, 5f);
 
