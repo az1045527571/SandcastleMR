@@ -58,19 +58,30 @@ public class SandBrush : MonoBehaviour
 
             float dt = Time.deltaTime;
 
-            // 左键挖
-            if (Input.GetMouseButton(0) && !Input.GetKey(KeyCode.LeftShift))
+            bool qHeld = Input.GetKey(KeyCode.Q);
+            bool eHeld = Input.GetKey(KeyCode.E);
+
+            // 左键：
+            //   默认 = 挖
+            //   Q + 左键 = 堆
+            //   E + 左键 = 浇水
+            if (Input.GetMouseButton(0))
             {
-                _terrain.Carve(hit.point, brushRadius, carveSpeed * dt);
+                if (qHeld)
+                {
+                    _terrain.Pile(hit.point, brushRadius, pileSpeed * dt);
+                }
+                else if (eHeld)
+                {
+                    _terrain.Wet(hit.point, brushRadius, wetSpeed * dt);
+                }
+                else
+                {
+                    _terrain.Carve(hit.point, brushRadius, carveSpeed * dt);
+                }
             }
-            // 右键堆 — 注意：轨道相机也用右键旋转
-            // 为了避免冲突，堆沙改成 Shift+左键 或 Q 键按住+左键
-            // 最终采用：按住 Q 键 + 左键 = 堆沙
-            if (Input.GetKey(KeyCode.Q) && Input.GetMouseButton(0))
-            {
-                _terrain.Pile(hit.point, brushRadius, pileSpeed * dt);
-            }
-            // 中键浇水
+
+            // 保留中键浇水（与 E 任选一）
             if (Input.GetMouseButton(2))
             {
                 _terrain.Wet(hit.point, brushRadius, wetSpeed * dt);
