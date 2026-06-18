@@ -55,6 +55,12 @@ public class SandTerrain : MonoBehaviour
         BuildMesh();
     }
 
+    void Start()
+    {
+        // 等 SDF 体积创建完后重新上传一次沙地顶点，让 SDF 范围内的顶点下沉
+        UploadMesh();
+    }
+
     void BuildMesh()
     {
         _h = new float[N * N];
@@ -330,11 +336,43 @@ public class SandTerrain : MonoBehaviour
         any = true;
     }
 
+    private Sandcastle.SdfVolume _sdfVolume;
+
     void UploadMesh()
     {
+        // 查 SDF 体积（只查一次）
+        if (_sdfVolume == null)
+            _sdfVolume = FindObjectOfType<Sandcastle.SdfVolume>();
+
+        Vector3 vCenter = Vector3.zero, vSize = Vector3.zero;
+        bool hasVolume = false;
+        if (_sdfVolume != null)
+        {
+            vCenter = _sdfVolume.transform.position;
+            vSize = _sdfVolume.size;
+            hasVolume = true;
+        }
+
+        Vector3 selfPos = transform.position;
+        float halfX = vSize.x * 0.5f;
+        float halfZ = vSize.z * 0.5f;
+
         for (int i = 0; i < _verts.Length; i++)
         {
-            _verts[i].y = _hVisual[i];
+            float y = _hVisual[i];
+
+            // 如果顶点在 SDF 体积的 XZ 范围内，下沉 100m让 SDF mesh 接管
+            if (hasVolume)
+            {
+                float wx = selfPos.x + _verts[i].x;
+                float wz = selfPos.z + _verts[i].z;
+                if (Mathf.Abs(wx - vCenter.x) <= halfX && Mathf.Abs(wz - vCenter.z) <= halfZ)
+                {
+                    y = -100f;
+                }
+            }
+
+            _verts[i].y = y;
             _colors[i].r = _w[i];
         }
         _mesh.vertices = _verts;

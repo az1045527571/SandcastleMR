@@ -52,6 +52,7 @@ namespace Sandcastle
         // 输出 buffer（避免每次 alloc）
         private List<Vector3> _vertBuf = new List<Vector3>(8192);
         private List<int> _triBuf = new List<int>(16384);
+        private List<Color> _colorBuf = new List<Color>(8192);
 
         void Awake()
         {
@@ -152,6 +153,7 @@ namespace Sandcastle
         {
             _vertBuf.Clear();
             _triBuf.Clear();
+            _colorBuf.Clear();
 
             float dx = size.x / resolutionX;
             float dy = size.y / resolutionY;
@@ -225,6 +227,10 @@ namespace Sandcastle
                             _vertBuf.Add(v0);
                             _vertBuf.Add(v1);
                             _vertBuf.Add(v2);
+                            // 默认干沙（wetness=0）
+                            _colorBuf.Add(Color.black);
+                            _colorBuf.Add(Color.black);
+                            _colorBuf.Add(Color.black);
                             // 翻转绕序（修复法线朝内问题）
                             _triBuf.Add(baseIdx);
                             _triBuf.Add(baseIdx + 2);
@@ -236,6 +242,7 @@ namespace Sandcastle
 
             _mesh.Clear();
             _mesh.SetVertices(_vertBuf);
+            _mesh.SetColors(_colorBuf);
             _mesh.SetTriangles(_triBuf, 0);
             _mesh.RecalculateNormals();
             _mesh.RecalculateBounds();
