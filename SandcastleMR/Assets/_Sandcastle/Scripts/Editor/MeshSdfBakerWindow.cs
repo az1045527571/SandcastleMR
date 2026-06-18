@@ -162,8 +162,14 @@ namespace SandcastleEditor
             asset.sdfTex = tex;
 
             // 保存
-            string folder = "Assets/_Sandcastle/Art/Models";
-            if (!AssetDatabase.IsValidFolder(folder)) folder = "Assets";
+            // 保存到 Resources 下，运行时能被 Resources.LoadAll 发现
+            string folder = "Assets/_Sandcastle/Resources/Models";
+            if (!AssetDatabase.IsValidFolder(folder))
+            {
+                if (!AssetDatabase.IsValidFolder("Assets/_Sandcastle/Resources"))
+                    AssetDatabase.CreateFolder("Assets/_Sandcastle", "Resources");
+                AssetDatabase.CreateFolder("Assets/_Sandcastle/Resources", "Models");
+            }
             string path = $"{folder}/{outputName}.asset";
             path = AssetDatabase.GenerateUniqueAssetPath(path);
 
