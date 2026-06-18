@@ -66,10 +66,23 @@ public class SandTerrain : MonoBehaviour
         _h = new float[N * N];
         _hVisual = new float[N * N];
         _w = new float[N * N];
-        for (int i = 0; i < _h.Length; i++)
+
+        // 中心高斯隆起作为初始小岛（1.5m 半径隆起 0.22m）
+        float islandRadius = 1.5f;
+        float islandHeight = 0.22f;
+        float halfSize = size * 0.5f;
+        for (int z = 0; z < N; z++)
         {
-            _h[i] = initialHeight;
-            _hVisual[i] = initialHeight;
+            for (int x = 0; x < N; x++)
+            {
+                int idx0 = z * N + x;
+                float wx = x * Cell - halfSize;
+                float wz = z * Cell - halfSize;
+                float d = Mathf.Sqrt(wx * wx + wz * wz);
+                float bump = islandHeight * Mathf.Exp(-(d * d) / (islandRadius * islandRadius));
+                _h[idx0] = initialHeight + bump;
+                _hVisual[idx0] = _h[idx0];
+            }
         }
 
         _mesh = new Mesh();

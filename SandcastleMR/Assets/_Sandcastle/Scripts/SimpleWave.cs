@@ -11,7 +11,7 @@ public class SimpleWave : MonoBehaviour
     public float size = 25f;
 
     [Header("波浪")]
-    public float waveHeight = 0.15f;
+    public float waveHeight = 0.02f;
     public float waveSpeed = 0.8f;
     public float waveFreq = 1.5f;
 
@@ -49,7 +49,7 @@ public class SimpleWave : MonoBehaviour
         mr.material = mat;
 
         // 水面略低于沙滩
-        transform.position = new Vector3(0f, -0.05f, 0f);
+        transform.position = new Vector3(0f, 0f, 0f);
     }
 
     void Update()
