@@ -1,21 +1,20 @@
 using UnityEngine;
 
 /// <summary>
-/// 构件放置器：鼠标交互把构件放到沙面上。
+/// 构件放置器：把预制城堡构件放到沙面上。
 /// 
 /// 操作：
-///   T + 左键 = 在鼠标位置放置当前选中构件
-///   X + 左键 = 删除鼠标指向的构件
-///   R（按住拖动） = 旋转预览
-///   1/2/3 = 切换构件类型（按 PiecePrefabs 索引）
-///   +/- = 缩放预览大小
+///   左键单击沙面 = 放置当前选中构件
+///   X + 左键    = 删除鼠标指向的构件
+///   R 按住      = 旋转预览
+///   + / -       = 缩放预览大小
+///   1/2/3       = 切换构件类型
 ///
 /// 需要场景中有 SandTerrain。
 /// </summary>
 public class PiecePlacer : MonoBehaviour
 {
     [Header("可放置的构件 Prefab 列表")]
-    [Tooltip("为空时会自动生成一个默认圆塔")]
     public GameObject[] piecePrefabs;
 
     [Header("放置参数")]
@@ -30,14 +29,12 @@ public class PiecePlacer : MonoBehaviour
     private GameObject _preview;
     private Camera _cam;
     private SandTerrain _terrain;
-    private bool _isPlacing;
 
     void Start()
     {
         _cam = Camera.main;
         _terrain = FindObjectOfType<SandTerrain>();
 
-        // 如果没有配置 prefab，自动创建默认圆塔
         if (piecePrefabs == null || piecePrefabs.Length == 0)
         {
             piecePrefabs = new GameObject[] { CreateDefaultTower() };
@@ -48,7 +45,7 @@ public class PiecePlacer : MonoBehaviour
 
     void Update()
     {
-        if (_cam == null || _terrain == null) return;
+        if (_cam == null) return;
 
         HandleInput();
         UpdatePreview();
@@ -68,22 +65,16 @@ public class PiecePlacer : MonoBehaviour
 
         // +/- 缩放
         if (Input.GetKeyDown(KeyCode.Equals) || Input.GetKeyDown(KeyCode.KeypadPlus))
-        {
             _currentScale = Mathf.Min(_currentScale + scaleStep, maxScale);
-        }
         if (Input.GetKeyDown(KeyCode.Minus) || Input.GetKeyDown(KeyCode.KeypadMinus))
-        {
             _currentScale = Mathf.Max(_currentScale - scaleStep, minScale);
-        }
 
         // R 旋转
         if (Input.GetKey(KeyCode.R))
-        {
             _currentRotY += rotateSpeed * Time.deltaTime;
-        }
 
-        // T + 左键 = 放置
-        if (Input.GetKey(KeyCode.T) && Input.GetMouseButtonDown(0))
+        // 左键：放置（排除右键旋转中和 X 删除模式）
+        if (Input.GetMouseButtonDown(0) && !Input.GetMouseButton(1) && !Input.GetKey(KeyCode.X))
         {
             PlacePiece();
         }
@@ -93,25 +84,23 @@ public class PiecePlacer : MonoBehaviour
         {
             DeletePiece();
         }
-
-        // 进入放置模式时显示预览
-        _isPlacing = Input.GetKey(KeyCode.T);
-        if (_preview != null)
-        {
-            _preview.SetActive(_isPlacing);
-        }
     }
 
     void UpdatePreview()
     {
-        if (_preview == null || !_isPlacing) return;
+        if (_preview == null) return;
 
         Ray ray = _cam.ScreenPointToRay(Input.mousePosition);
         if (Physics.Raycast(ray, out RaycastHit hit, 100f))
         {
+            _preview.SetActive(true);
             _preview.transform.position = hit.point;
             _preview.transform.rotation = Quaternion.Euler(0f, _currentRotY, 0f);
             _preview.transform.localScale = Vector3.one * _currentScale;
+        }
+        else
+        {
+            _preview.SetActive(false);
         }
     }
 
@@ -128,20 +117,29 @@ public class PiecePlacer : MonoBehaviour
         go.transform.rotation = Quaternion.Euler(0f, _currentRotY, 0f);
         go.transform.localScale = Vector3.one * _currentScale;
 
-        // 重新创建不透明材质（prefab 本身的材质是不透明的，Instantiate 会复制应用，不需要额外处理）
-
         // 确保有 CastlePiece 组件
         if (go.GetComponent<CastlePiece>() == null)
             go.AddComponent<CastlePiece>();
 
-        // 在塔脚下堆一圈沙，形成沙堡基座
+        // 确保有 Collider 用于删除射线
+        if (go.GetComponent<Collider>() == null)
+        {
+            var col = go.AddComponent<CapsuleCollider>();
+            col.center = new Vector3(0f, 0.6f, 0f);
+            col.radius = 0.35f;
+            col.height = 1.2f;
+        }
+
+        // 设置不透明材质
+        SetMaterialOpaque(go);
+
+        // 在塔脚下堆出沙堆基座
         var piece = go.GetComponent<CastlePiece>();
         if (_terrain != null && piece != null)
         {
-            float radius = piece.baseRadius * _currentScale * 1.6f;  // 沙堡基座比塔身略宽
+            float radius = piece.baseRadius * _currentScale * 1.6f;
             float moundHeight = 0.15f * _currentScale;
             _terrain.Pile(hit.point, radius, moundHeight);
-            // 在边缘额外补一小圈，让过渡更柔
             _terrain.Pile(hit.point, radius * 0.6f, moundHeight * 0.5f);
         }
     }
@@ -165,13 +163,13 @@ public class PiecePlacer : MonoBehaviour
         var prefab = piecePrefabs[_selectedIndex];
         _preview = Instantiate(prefab);
         _preview.name = "PiecePreview";
-        _preview.SetActive(true);  // 先启用才能拿到 Renderer、Collider
+        _preview.SetActive(true);
 
         // 移除 Collider（预览不参与物理）
         foreach (var col in _preview.GetComponentsInChildren<Collider>())
             Destroy(col);
 
-        // 半透明材质表示预览
+        // 半透明
         SetMaterialTransparent(_preview);
     }
 
@@ -213,29 +211,26 @@ public class PiecePlacer : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// 程序化生成默认圆塔 prefab（Cylinder + 顶部锥形）
-    /// </summary>
     GameObject CreateDefaultTower()
     {
         var tower = new GameObject("RoundTower");
         tower.SetActive(false);
 
-        // 塔身（圆柱）
+        // 塔身
         var body = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
         body.name = "Body";
         body.transform.SetParent(tower.transform, false);
         body.transform.localPosition = new Vector3(0f, 0.5f, 0f);
         body.transform.localScale = new Vector3(0.6f, 0.5f, 0.6f);
 
-        // 塔顶（缩放球体当圆锥占位）
+        // 塔顶
         var top = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         top.name = "Top";
         top.transform.SetParent(tower.transform, false);
         top.transform.localPosition = new Vector3(0f, 1.1f, 0f);
         top.transform.localScale = new Vector3(0.7f, 0.3f, 0.7f);
 
-        // 统一沙色材质
+        // 材质
         Shader shader = Shader.Find("Universal Render Pipeline/Lit");
         var mat = new Material(shader);
         mat.SetColor("_BaseColor", new Color(0.88f, 0.78f, 0.58f));
@@ -243,19 +238,17 @@ public class PiecePlacer : MonoBehaviour
         body.GetComponent<Renderer>().sharedMaterial = mat;
         top.GetComponent<Renderer>().sharedMaterial = mat;
 
-        // 添加 CastlePiece
+        // CastlePiece
         var piece = tower.AddComponent<CastlePiece>();
         piece.baseRadius = 0.35f;
 
-        // 添加一个整体碰撞体（用于删除射线检测）
+        // 碰撞体
         var col = tower.AddComponent<CapsuleCollider>();
         col.center = new Vector3(0f, 0.6f, 0f);
         col.radius = 0.35f;
         col.height = 1.2f;
 
-        tower.SetActive(true);
         DontDestroyOnLoad(tower);
-        tower.SetActive(false);
         return tower;
     }
 }

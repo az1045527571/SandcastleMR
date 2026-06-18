@@ -82,11 +82,6 @@ public class SandcastleBootstrap : MonoBehaviour
         var terrain = beach.AddComponent<SandTerrain>();
         terrain.size = Mathf.Max(beachSize.x, beachSize.y);
 
-        // 挂上笔刷
-        var brushGo = new GameObject("SandBrush");
-        brushGo.transform.SetParent(transform, false);
-        brushGo.AddComponent<SandBrush>();
-
         // 挂上构件放置器
         var placerGo = new GameObject("PiecePlacer");
         placerGo.transform.SetParent(transform, false);
@@ -118,6 +113,7 @@ public class SandcastleBootstrap : MonoBehaviour
 
         var orbit = cam.GetComponent<OrbitCamera>();
         if (orbit == null) orbit = cam.gameObject.AddComponent<OrbitCamera>();
+        // 轨道相机不跟 Shift+滚轮冲突了，直接简化
         orbit.targetPoint = Vector3.zero;
         orbit.distance = 12f;
     }
