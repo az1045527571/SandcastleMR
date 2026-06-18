@@ -103,24 +103,39 @@ Shader "Sandcastle/Sand"
 
             half4 frag(Varyings IN) : SV_Target
             {
-                float2 wpos = IN.positionWS.xz;
+                // 三面投影采样：根据法线权重混合 XZ/XY/YZ 三个平面
+                float3 absN = abs(normalize(IN.normalWS));
+                float3 weights = absN / (absN.x + absN.y + absN.z + 0.0001);
+                float2 uvXZ = IN.positionWS.xz;
+                float2 uvXY = IN.positionWS.xy;
+                float2 uvYZ = IN.positionWS.yz;
 
-                // 噪声纹理
-                float n = fbm(wpos * _NoiseScale * 0.1);
-                float grain = valueNoise(wpos * _NoiseScale);
+                // 大尺度 fbm
+                float nXZ = fbm(uvXZ * _NoiseScale * 0.1);
+                float nXY = fbm(uvXY * _NoiseScale * 0.1);
+                float nYZ = fbm(uvYZ * _NoiseScale * 0.1);
+                float n = nXZ * weights.y + nXY * weights.z + nYZ * weights.x;
+
+                // 小尺度颗粒
+                float grainXZ = valueNoise(uvXZ * _NoiseScale);
+                float grainXY = valueNoise(uvXY * _NoiseScale);
+                float grainYZ = valueNoise(uvYZ * _NoiseScale);
+                float grain = grainXZ * weights.y + grainXY * weights.z + grainYZ * weights.x;
+
                 float blend = saturate(n * 0.7 + grain * 0.3);
 
                 // 干沙颜色 + 噪声
                 float3 dryColor = _BaseColor.rgb * (blend * _NoiseStrength + (1.0 - _NoiseStrength));
-
                 // 湿沙颜色
                 float3 wetColor = _WetColor.rgb * (blend * _NoiseStrength * 0.5 + (1.0 - _NoiseStrength * 0.5));
-
                 // 按湿度混合
                 float3 albedo = lerp(dryColor, wetColor, IN.wetness);
 
-                // 闪光颗粒（干沙才有）
-                float sparkle = step(0.985, hash21(floor(wpos * _SparkleScale)));
+                // 闪光颗粒（三面混合）
+                float spXZ = step(0.985, hash21(floor(uvXZ * _SparkleScale)));
+                float spXY = step(0.985, hash21(floor(uvXY * _SparkleScale)));
+                float spYZ = step(0.985, hash21(floor(uvYZ * _SparkleScale)));
+                float sparkle = spXZ * weights.y + spXY * weights.z + spYZ * weights.x;
                 albedo += sparkle * _SparkleStrength * (1.0 - IN.wetness);
 
                 // Lambert 光照
@@ -132,7 +147,7 @@ Shader "Sandcastle/Sand"
                 // 环境光
                 float3 ambient = SampleSH(N) * albedo;
 
-                // 湿沙有微弱反光
+                // 湿沙反光
                 float3 V = normalize(GetWorldSpaceViewDir(IN.positionWS));
                 float3 H = normalize(mainLight.direction + V);
                 float spec = pow(saturate(dot(N, H)), 64.0) * IN.wetness * 0.3;
