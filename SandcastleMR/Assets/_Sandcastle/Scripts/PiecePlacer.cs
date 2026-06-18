@@ -230,10 +230,12 @@ public class PiecePlacer : MonoBehaviour
         top.transform.localPosition = new Vector3(0f, 1.1f, 0f);
         top.transform.localScale = new Vector3(0.7f, 0.3f, 0.7f);
 
-        // 材质
-        Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+        // 材质：使用 CastlePiece shader（底部融合沙色）
+        Shader shader = Shader.Find("Sandcastle/CastlePiece");
+        if (shader == null) shader = Shader.Find("Universal Render Pipeline/Lit");
         var mat = new Material(shader);
         mat.SetColor("_BaseColor", new Color(0.88f, 0.78f, 0.58f));
+        mat.SetColor("_SandColor", new Color(0.92f, 0.82f, 0.62f));
         mat.SetFloat("_Smoothness", 0.15f);
         body.GetComponent<Renderer>().sharedMaterial = mat;
         top.GetComponent<Renderer>().sharedMaterial = mat;

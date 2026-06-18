@@ -168,6 +168,17 @@ public class SandTerrain : MonoBehaviour
             }
         }
         if (visualDirty) UploadMesh();
+
+        // 更新全局 shader 变量，让构件 shader 知道沙面高度
+        UpdateGlobalShaderParams();
+    }
+
+    void UpdateGlobalShaderParams()
+    {
+        // 用当前地形的平均高度作为基准（更精确的做法是用高度图 RT，但原型够用）
+        float worldY = transform.position.y;
+        Shader.SetGlobalFloat("_SandTerrainMinY", worldY + initialHeight);
+        Shader.SetGlobalFloat("_SandTerrainMaxY", worldY + maxHeight);
     }
 
     /// <summary>世界坐标转网格索引（不裁切，可越界）。</summary>
