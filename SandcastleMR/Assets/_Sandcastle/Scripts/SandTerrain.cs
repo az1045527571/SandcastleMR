@@ -193,6 +193,35 @@ public class SandTerrain : MonoBehaviour
         return cx >= 0 && cx < N && cz >= 0 && cz < N;
     }
 
+    /// <summary>在世界坐标 (x,z) 处双线性采样地形高度（世界 Y）。超出范围返回 initialHeight。</summary>
+    public float SampleHeight(Vector3 worldPos)
+    {
+        Vector3 local = transform.InverseTransformPoint(worldPos);
+        float half = size * 0.5f;
+        float fx = (local.x + half) / Cell;
+        float fz = (local.z + half) / Cell;
+        // 双线性插值
+        int x0 = Mathf.FloorToInt(fx);
+        int z0 = Mathf.FloorToInt(fz);
+        int x1 = x0 + 1;
+        int z1 = z0 + 1;
+        float tx = fx - x0;
+        float tz = fz - z0;
+        float h00 = GetH(x0, z0);
+        float h10 = GetH(x1, z0);
+        float h01 = GetH(x0, z1);
+        float h11 = GetH(x1, z1);
+        float h = Mathf.Lerp(Mathf.Lerp(h00, h10, tx), Mathf.Lerp(h01, h11, tx), tz);
+        return transform.position.y + h;
+    }
+
+    float GetH(int x, int z)
+    {
+        x = Mathf.Clamp(x, 0, N - 1);
+        z = Mathf.Clamp(z, 0, N - 1);
+        return _h[z * N + x];
+    }
+
     /// <summary>在世界坐标处开挖（高度减少）。半径单位米。</summary>
     public void Carve(Vector3 worldPos, float radiusMeters, float depth)
     {

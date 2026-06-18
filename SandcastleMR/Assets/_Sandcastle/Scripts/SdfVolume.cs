@@ -31,6 +31,11 @@ namespace Sandcastle
         [Tooltip("等值面阈值。0 = SDF 表面")]
         public float isoLevel = 0f;
 
+        [Header("地形融入")]
+        [Tooltip("是否将 SandTerrain 高度场作为基础 SDF")]
+        public bool includeTerrain = true;
+        public float terrainSmoothK = 0.15f;
+
         // 体素数据
         private float[] _sdf;
         private int Nx => resolutionX + 1;
@@ -39,6 +44,7 @@ namespace Sandcastle
 
         // 注册的 SDF 形状
         private readonly List<SdfPiece> _pieces = new List<SdfPiece>();
+        private SandTerrain _terrain;
 
         private Mesh _mesh;
         private MeshFilter _meshFilter;
@@ -56,6 +62,7 @@ namespace Sandcastle
             _meshFilter.sharedMesh = _mesh;
 
             _sdf = new float[Nx * Ny * Nz];
+            _terrain = FindObjectOfType<SandTerrain>();
         }
 
         public void Register(SdfPiece p)
@@ -106,11 +113,17 @@ namespace Sandcastle
                 {
                     for (int x = 0; x < Nx; x++)
                     {
-                        // 体素中心的本地坐标（角落原点）
                         Vector3 localPos = new Vector3(x * dx, y * dy, z * dz);
                         Vector3 worldPos = LocalToWorld(localPos);
 
+                        // 基础 SDF ：高度场 (worldY - terrainHeight)。负值=在沙下，正值=在沙上
                         float d = float.PositiveInfinity;
+                        if (includeTerrain && _terrain != null)
+                        {
+                            float groundY = _terrain.SampleHeight(worldPos);
+                            d = worldPos.y - groundY;
+                        }
+
                         for (int i = 0; i < _pieces.Count; i++)
                         {
                             float di = _pieces[i].SampleSdf(worldPos);
