@@ -1,4 +1,5 @@
 using UnityEngine;
+using Sandcastle;
 
 /// <summary>
 /// 沙堡场景启动器：在场景中只挂一个空 GameObject 上挂这个脚本，
@@ -91,6 +92,28 @@ public class SandcastleBootstrap : MonoBehaviour
         var dbgGo = new GameObject("DebugUI");
         dbgGo.transform.SetParent(transform, false);
         dbgGo.AddComponent<SandcastleDebugUI>();
+
+        // SDF 体积系统
+        var sdfGo = new GameObject("SdfVolume");
+        sdfGo.transform.SetParent(transform, false);
+        sdfGo.transform.localPosition = new Vector3(0f, 0.1f, 0f); // 略高于沙面
+        sdfGo.AddComponent<MeshFilter>();
+        var sdfMr = sdfGo.AddComponent<MeshRenderer>();
+        Shader sandShader = Shader.Find("Sandcastle/Sand");
+        if (sandShader == null) sandShader = Shader.Find("Universal Render Pipeline/Lit");
+        sdfMr.sharedMaterial = new Material(sandShader);
+        sdfGo.AddComponent<SdfVolume>();
+
+        // SDF 放置器（按 2 切换到 SDF 模式）
+        var sdfPlacerGo = new GameObject("SdfPiecePlacer");
+        sdfPlacerGo.transform.SetParent(transform, false);
+        var sdfPlacer = sdfPlacerGo.AddComponent<SdfPiecePlacer>();
+        sdfPlacer.enabled = false; // 默认关闭，按 2 开启
+
+        // 模式切换器
+        var switchGo = new GameObject("ModeSwitcher");
+        switchGo.transform.SetParent(transform, false);
+        switchGo.AddComponent<PlacerModeSwitcher>();
     }
 
     void BuildWater()
