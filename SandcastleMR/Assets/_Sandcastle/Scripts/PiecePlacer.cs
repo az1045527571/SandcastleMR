@@ -134,14 +134,18 @@ public class PiecePlacer : MonoBehaviour
         SetMaterialOpaque(go);
         SetPieceBaseY(go, hit.point.y);
 
-        // 在塔脚下堆出沙堆基座
+        // 在塔脚下堆出沙堆基座（堆高一些，盖住塔底部）
         var piece = go.GetComponent<CastlePiece>();
         if (_terrain != null && piece != null)
         {
-            float radius = piece.baseRadius * _currentScale * 1.6f;
-            float moundHeight = 0.15f * _currentScale;
+            float radius = piece.baseRadius * _currentScale * 1.8f;
+            float moundHeight = 0.35f * _currentScale;  // 堆高，盖住塔底
             _terrain.Pile(hit.point, radius, moundHeight);
-            _terrain.Pile(hit.point, radius * 0.6f, moundHeight * 0.5f);
+            _terrain.Pile(hit.point, radius * 0.5f, moundHeight * 0.4f);
+
+            // 塔往下沉，让沙堆把底部接缝盖住
+            float sink = piece.baseSink * _currentScale + 0.08f * _currentScale;
+            go.transform.position = hit.point - new Vector3(0f, sink, 0f);
         }
     }
 
