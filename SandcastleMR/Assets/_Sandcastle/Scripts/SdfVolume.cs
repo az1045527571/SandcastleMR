@@ -18,14 +18,14 @@ namespace Sandcastle
     public class SdfVolume : MonoBehaviour
     {
         [Header("体积")]
-        public Vector3 size = new Vector3(0.4f, 0.25f, 0.4f);
+        public Vector3 size = new Vector3(4f, 1f, 4f);
         public int resolutionX = 96;
-        public int resolutionY = 60;   // Y 轴可以稍低，沙堡以扁宽为主
+        public int resolutionY = 32;
         public int resolutionZ = 96;
 
         [Header("Smooth Union")]
         [Tooltip("smooth min 平滑系数。越大融合越柔和但会损失细节")]
-        public float smoothK = 0.015f;
+        public float smoothK = 0.15f;
 
         [Header("ISO 表面")]
         [Tooltip("等值面阈值。0 = SDF 表面")]
