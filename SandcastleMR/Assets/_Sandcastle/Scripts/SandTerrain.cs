@@ -25,14 +25,18 @@ public class SandTerrain : MonoBehaviour
     public float dryAngleTan = 0.7f;
     [Tooltip("湿沙的最大稳定坡度（tan）。湿沙能立得很陡，接近垂直")]
     public float wetAngleTan = 5f;
-    [Range(1, 8)]
-    public int slumpIterationsPerFrame = 2;
+    [Range(1, 16)]
+    public int slumpIterationsPerFrame = 4;
     [Range(0f, 0.5f)]
-    public float slumpRate = 0.3f;
+    public float slumpRate = 0.15f;
 
     [Header("湿度")]
     [Range(0f, 1f)]
     public float wetnessDecayPerSecond = 0.02f;
+
+    [Header("视觉平滑")]
+    [Tooltip("顶点高度向目标值过渡的速度，越小越慢越丝滑")]
+    public float visualLerpSpeed = 8f;
 
     private int N => resolution + 1;        // 顶点边长
     private float Cell => size / resolution; // 每格物理尺寸（米）
@@ -40,7 +44,8 @@ public class SandTerrain : MonoBehaviour
     private Mesh _mesh;
     private Vector3[] _verts;
     private Color[] _colors;       // 用 vertex color 传湿度（R 通道）
-    private float[] _h;            // 高度
+    private float[] _h;            // 物理高度（目标值）
+    private float[] _hVisual;      // 显示高度（平滑插值后）
     private float[] _w;            // 湿度
     private bool _dirtyMesh;
     private MeshCollider _meshCollider;
@@ -53,8 +58,13 @@ public class SandTerrain : MonoBehaviour
     void BuildMesh()
     {
         _h = new float[N * N];
+        _hVisual = new float[N * N];
         _w = new float[N * N];
-        for (int i = 0; i < _h.Length; i++) _h[i] = initialHeight;
+        for (int i = 0; i < _h.Length; i++)
+        {
+            _h[i] = initialHeight;
+            _hVisual[i] = initialHeight;
+        }
 
         _mesh = new Mesh();
         _mesh.name = "SandTerrainMesh";
@@ -138,6 +148,26 @@ public class SandTerrain : MonoBehaviour
             UploadMesh();
             _dirtyMesh = false;
         }
+
+        // 视觉平滑插值：_hVisual 向 _h 过渡
+        float lerpT = 1f - Mathf.Exp(-visualLerpSpeed * Time.deltaTime);
+        bool visualDirty = false;
+        for (int i = 0; i < _hVisual.Length; i++)
+        {
+            float target = _h[i];
+            float diff = target - _hVisual[i];
+            if (Mathf.Abs(diff) > 0.0005f)
+            {
+                _hVisual[i] += diff * lerpT;
+                visualDirty = true;
+            }
+            else if (_hVisual[i] != target)
+            {
+                _hVisual[i] = target;
+                visualDirty = true;
+            }
+        }
+        if (visualDirty) UploadMesh();
     }
 
     /// <summary>世界坐标转网格索引（不裁切，可越界）。</summary>
@@ -264,7 +294,7 @@ public class SandTerrain : MonoBehaviour
     {
         for (int i = 0; i < _verts.Length; i++)
         {
-            _verts[i].y = _h[i];
+            _verts[i].y = _hVisual[i];
             _colors[i].r = _w[i];
         }
         _mesh.vertices = _verts;
