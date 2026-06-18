@@ -84,7 +84,10 @@ namespace Sandcastle
             if (bakedSdf == null) return float.PositiveInfinity;
             // 世界坐标 → mesh 本地坐标
             Vector3 local = transform.InverseTransformPoint(p);
-            return bakedSdf.SampleAtLocal(local);
+            float d = bakedSdf.SampleAtLocal(local);
+            // SDF 值要乘回世界缩放（本地距离 → 世界距离）
+            d *= transform.lossyScale.x;
+            return d;
         }
     }
 }
