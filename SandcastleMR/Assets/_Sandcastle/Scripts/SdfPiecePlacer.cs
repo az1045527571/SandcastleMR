@@ -92,9 +92,10 @@ public class SdfPiecePlacer : MonoBehaviour
             }
         }
 
-        // 滚轮调大小
+        // Shift+滚轮调大小（裸滚轮保留给相机缩放）
         float scroll = Input.GetAxis("Mouse ScrollWheel");
-        if (Mathf.Abs(scroll) > 0.001f)
+        bool shiftHeld = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+        if (shiftHeld && Mathf.Abs(scroll) > 0.001f)
         {
             if (_mode == Mode.Sphere)
                 _currentRadius = Mathf.Clamp(_currentRadius + scroll, minRadius, maxRadius);
