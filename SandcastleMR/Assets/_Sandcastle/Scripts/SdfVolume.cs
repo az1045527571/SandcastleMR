@@ -38,8 +38,9 @@ namespace Sandcastle
 
         // 体素数据
         private float[] _sdf;
-        private float[] _sdfBase;  // 基础 SDF（不含侵蚀），仅在 piece 增删时重算
-        private float[] _erosion;  // 侵蚀场
+        private float[] _sdfBase;
+        private float[] _erosion;
+        private float[] _wetness;  // 每个体素的湿度 0~1
         private bool _baseDirty = true;
         private int Nx => resolutionX + 1;
         private int Ny => resolutionY + 1;
@@ -69,6 +70,7 @@ namespace Sandcastle
             _sdf = new float[Nx * Ny * Nz];
             _sdfBase = new float[Nx * Ny * Nz];
             _erosion = new float[Nx * Ny * Nz];
+            _wetness = new float[Nx * Ny * Nz];
             _terrain = FindObjectOfType<SandTerrain>();
         }
 
@@ -132,10 +134,23 @@ namespace Sandcastle
                         int idx = Index(x, y, z);
                         float baseVal = _sdfBase[idx] + _erosion[idx];
                         if (baseVal > 0f) continue;      // 空气
-                        if (baseVal < -0.05f) continue;  // 深处
+                        // 被海水泡到就变湿（不管是否表面）
+                        _wetness[idx] = 1f;
+                        if (baseVal < -0.05f) continue;  // 深处不侵蚀但依然湿
                         _erosion[idx] += amount;
                     }
                 }
+            }
+        }
+
+        /// <summary>每帧调一次让湿度蒸发。应在 Update 里调。</summary>
+        public void DecayWetness(float decayPerSecond)
+        {
+            float decay = decayPerSecond * Time.deltaTime;
+            for (int i = 0; i < _wetness.Length; i++)
+            {
+                if (_wetness[i] > 0f)
+                    _wetness[i] = Mathf.Max(0f, _wetness[i] - decay);
             }
         }
 
@@ -240,6 +255,17 @@ namespace Sandcastle
         }
 
         /// <summary>SDF 梯度作为顶点法线，实现平滑着色</summary>
+        /// <summary>采样 cube (x,y,z) 中心 8 个角的平均湿度</summary>
+        float SampleWetnessAtCube(int x, int y, int z)
+        {
+            float sum = 0;
+            sum += _wetness[Index(x, y, z)];
+            sum += _wetness[Index(Mathf.Min(x+1, resolutionX), y, z)];
+            sum += _wetness[Index(x, Mathf.Min(y+1, resolutionY), z)];
+            sum += _wetness[Index(x, y, Mathf.Min(z+1, resolutionZ))];
+            return Mathf.Clamp01(sum * 0.25f);
+        }
+
         Vector3 SdfGradient(Vector3 localPos)
         {
             float eps = Mathf.Min(size.x / resolutionX, size.y / resolutionY) * 0.5f;
@@ -336,10 +362,12 @@ namespace Sandcastle
                             _normalBuf.Add(SdfGradient(v0 + size * 0.5f));
                             _normalBuf.Add(SdfGradient(v1 + size * 0.5f));
                             _normalBuf.Add(SdfGradient(v2 + size * 0.5f));
-                            // 默认干沙（wetness=0）
-                            _colorBuf.Add(Color.black);
-                            _colorBuf.Add(Color.black);
-                            _colorBuf.Add(Color.black);
+                            // 顶点湿度（采样当前 cube 中心的湿度）
+                            float wet = SampleWetnessAtCube(x, y, z);
+                            Color wetCol = new Color(wet, 0, 0, 0);
+                            _colorBuf.Add(wetCol);
+                            _colorBuf.Add(wetCol);
+                            _colorBuf.Add(wetCol);
                             // 翻转绕序（修复法线朝内问题）
                             _triBuf.Add(baseIdx);
                             _triBuf.Add(baseIdx + 2);

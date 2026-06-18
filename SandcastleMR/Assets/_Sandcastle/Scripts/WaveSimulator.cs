@@ -31,9 +31,14 @@ namespace Sandcastle
         [Tooltip("侵蚀作用范围: 离水位多少米内的体素受侵蚀")]
         public float erodeBandHeight = 1.0f;
 
+        [Header("湿度")]
+        [Tooltip("湿度蒸发速率（每秒）")]
+        public float wetnessDecay = 0.1f;
+
         [Header("引用")]
         public SdfVolume sdfVolume;
         public SimpleWave simpleWave;
+        private SandTerrain _terrain;
 
         private float _t;
         private float _currentLevel;
@@ -45,6 +50,7 @@ namespace Sandcastle
         {
             if (sdfVolume == null) sdfVolume = FindObjectOfType<SdfVolume>();
             if (simpleWave == null) simpleWave = FindObjectOfType<SimpleWave>();
+            _terrain = FindObjectOfType<SandTerrain>();
             _currentLevel = baseWaterLevel;
         }
 
@@ -71,11 +77,17 @@ namespace Sandcastle
                 simpleWave.transform.position = pos;
             }
 
-            // 浪头时段触发侵蚀
+            // 浪头时段触发侵蚀 + 湿润
             if (surge > 0.3f && sdfVolume != null)
             {
                 sdfVolume.ErodeBelowWater(_currentLevel, erodePerSecond * Time.deltaTime, erodeBandHeight);
                 _eroding = true;
+
+                // SandTerrain 也变湿（SDF 区域外的沙地）
+                if (_terrain != null)
+                {
+                    _terrain.Wet(Vector3.zero, _terrain.size * 0.5f, 0.5f);
+                }
             }
             else if (_eroding)
             {
@@ -83,6 +95,10 @@ namespace Sandcastle
                 sdfVolume.RebuildMesh();
                 _eroding = false;
             }
+
+            // 湿度蒸发
+            if (sdfVolume != null)
+                sdfVolume.DecayWetness(wetnessDecay);
         }
     }
 }
