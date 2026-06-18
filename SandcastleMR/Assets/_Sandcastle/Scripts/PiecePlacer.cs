@@ -180,9 +180,12 @@ public class PiecePlacer : MonoBehaviour
         {
             foreach (var mat in r.materials)
             {
-                Color c = mat.color;
-                c.a = 0.4f;
-                mat.color = c;
+                if (mat.HasProperty("_BaseColor"))
+                {
+                    Color c = mat.GetColor("_BaseColor");
+                    c.a = 0.4f;
+                    mat.SetColor("_BaseColor", c);
+                }
                 mat.SetFloat("_Surface", 1);
                 mat.SetOverrideTag("RenderType", "Transparent");
                 mat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
@@ -211,9 +214,12 @@ public class PiecePlacer : MonoBehaviour
         {
             foreach (var mat in r.materials)
             {
-                Color c = mat.color;
-                c.a = 1f;
-                mat.color = c;
+                if (mat.HasProperty("_BaseColor"))
+                {
+                    Color c = mat.GetColor("_BaseColor");
+                    c.a = 1f;
+                    mat.SetColor("_BaseColor", c);
+                }
                 mat.SetFloat("_Surface", 0);
                 mat.SetOverrideTag("RenderType", "Opaque");
                 mat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.One);
