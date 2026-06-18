@@ -340,40 +340,9 @@ public class SandTerrain : MonoBehaviour
 
     void UploadMesh()
     {
-        // 查 SDF 体积（只查一次）
-        if (_sdfVolume == null)
-            _sdfVolume = FindObjectOfType<Sandcastle.SdfVolume>();
-
-        Vector3 vCenter = Vector3.zero, vSize = Vector3.zero;
-        bool hasVolume = false;
-        if (_sdfVolume != null)
-        {
-            vCenter = _sdfVolume.transform.position;
-            vSize = _sdfVolume.size;
-            hasVolume = true;
-        }
-
-        Vector3 selfPos = transform.position;
-        float halfX = vSize.x * 0.5f * 0.75f;  // 挖洞范围比 SDF 体积小 25%，边缘重叠避免缝隙
-        float halfZ = vSize.z * 0.5f * 0.75f;
-
         for (int i = 0; i < _verts.Length; i++)
         {
-            float y = _hVisual[i];
-
-            // 如果顶点在 SDF 体积的 XZ 范围内，下沉 100m让 SDF mesh 接管
-            if (hasVolume)
-            {
-                float wx = selfPos.x + _verts[i].x;
-                float wz = selfPos.z + _verts[i].z;
-                if (Mathf.Abs(wx - vCenter.x) <= halfX && Mathf.Abs(wz - vCenter.z) <= halfZ)
-                {
-                    // 下沉一点就够，不要太多，避免形成几何柱子
-                    y -= 0.5f;
-                }
-            }
-
-            _verts[i].y = y;
+            _verts[i].y = _hVisual[i];
             _colors[i].r = _w[i];
         }
         _mesh.vertices = _verts;

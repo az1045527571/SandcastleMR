@@ -96,7 +96,7 @@ public class SandcastleBootstrap : MonoBehaviour
         // SDF 体积系统
         var sdfGo = new GameObject("SdfVolume");
         sdfGo.transform.SetParent(transform, false);
-        sdfGo.transform.localPosition = new Vector3(0f, 0.5f, 0f); // 体积中心 Y=0.5，体积范围 Y=-0.5~1.5，包含地面交界
+        sdfGo.transform.localPosition = new Vector3(0f, 0.5f + 0.001f, 0f); // 轻微上抬1mm避免与 SandTerrain 同面 z-fighting
         sdfGo.AddComponent<MeshFilter>();
         var sdfMr = sdfGo.AddComponent<MeshRenderer>();
         Shader sdfSandShader = Shader.Find("Sandcastle/Sand");
