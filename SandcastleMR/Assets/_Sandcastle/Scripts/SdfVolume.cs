@@ -38,7 +38,9 @@ namespace Sandcastle
 
         // 体素数据
         private float[] _sdf;
-        private float[] _erosion;  // 侵蚀场：每个体素累计的 SDF 偏移量（正值=被侵蚀）
+        private float[] _sdfBase;  // 基础 SDF（不含侵蚀），仅在 piece 增删时重算
+        private float[] _erosion;  // 侵蚀场
+        private bool _baseDirty = true;
         private int Nx => resolutionX + 1;
         private int Ny => resolutionY + 1;
         private int Nz => resolutionZ + 1;
@@ -65,6 +67,7 @@ namespace Sandcastle
             _meshFilter.sharedMesh = _mesh;
 
             _sdf = new float[Nx * Ny * Nz];
+            _sdfBase = new float[Nx * Ny * Nz];
             _erosion = new float[Nx * Ny * Nz];
             _terrain = FindObjectOfType<SandTerrain>();
         }
@@ -78,12 +81,17 @@ namespace Sandcastle
         public void Register(SdfPiece p)
         {
             if (!_pieces.Contains(p)) _pieces.Add(p);
+            _baseDirty = true;
             RebuildMesh();
         }
 
         public void Unregister(SdfPiece p)
         {
-            if (_pieces.Remove(p)) RebuildMesh();
+            if (_pieces.Remove(p))
+            {
+                _baseDirty = true;
+                RebuildMesh();
+            }
         }
 
         /// <summary>世界坐标 → 体素本地坐标（[0,size] 范围）。</summary>
@@ -109,26 +117,22 @@ namespace Sandcastle
         /// </summary>
         public void ErodeBelowWater(float waterY, float amount, float bandHeight)
         {
-            float dx = size.x / resolutionX;
             float dy = size.y / resolutionY;
-            float dz = size.z / resolutionZ;
 
             for (int z = 0; z < Nz; z++)
             {
                 for (int y = 0; y < Ny; y++)
                 {
-                    Vector3 localPos = new Vector3(0, y * dy, 0);
-                    Vector3 worldPos = LocalToWorld(localPos);
-                    float vy = worldPos.y;
-                    // 只处理水位附近的体素
-                    if (vy > waterY) continue;
-                    if (vy < waterY - bandHeight) continue;
+                    float localY = y * dy;
+                    float worldY = LocalToWorld(new Vector3(0, localY, 0)).y;
+                    if (worldY > waterY) continue;
+                    if (worldY < waterY - bandHeight) continue;
                     for (int x = 0; x < Nx; x++)
                     {
                         int idx = Index(x, y, z);
-                        // 只侵蚀表面附近的体素（在实体内部但靠近表面）
-                        if (_sdf[idx] > 0f) continue;     // 空气不侵蚀
-                        if (_sdf[idx] < -0.05f) continue; // 深处不侵蚀
+                        float baseVal = _sdfBase[idx] + _erosion[idx];
+                        if (baseVal > 0f) continue;      // 空气
+                        if (baseVal < -0.05f) continue;  // 深处
                         _erosion[idx] += amount;
                     }
                 }
@@ -137,13 +141,19 @@ namespace Sandcastle
 
         public void RebuildMesh()
         {
-            EvaluateSdf();
+            if (_baseDirty)
+            {
+                EvaluateBase();
+                _baseDirty = false;
+            }
+            // 最终 SDF = base + erosion
+            for (int i = 0; i < _sdf.Length; i++)
+                _sdf[i] = _sdfBase[i] + _erosion[i];
             ExtractMesh();
-            Debug.Log($"[SdfVolume] Pieces={_pieces.Count}, Verts={_vertBuf.Count}, Tris={_triBuf.Count/3}, Bounds={_mesh.bounds}");
         }
 
-        /// <summary>对每个体素求所有 piece 的 smooth min。</summary>
-        void EvaluateSdf()
+        /// <summary>重新计算基础 SDF（地形 + 所有 piece）。耗时操作，仅在 piece 增删时调用。</summary>
+        void EvaluateBase()
         {
             float dx = size.x / resolutionX;
             float dy = size.y / resolutionY;
@@ -155,7 +165,6 @@ namespace Sandcastle
                 {
                     for (int x = 0; x < Nx; x++)
                     {
-                        // 边缘淡出：距离体积边缘 2 格内强制为正值（空气）避免 MC 在边界生成卡断几何
                         int borderFade = 2;
                         bool atBorder = (x < borderFade || x >= Nx - borderFade ||
                                          z < borderFade || z >= Nz - borderFade);
@@ -163,7 +172,6 @@ namespace Sandcastle
                         Vector3 localPos = new Vector3(x * dx, y * dy, z * dz);
                         Vector3 worldPos = LocalToWorld(localPos);
 
-                        // 基础 SDF ：高度场 (worldY - terrainHeight)。负值=在沙下，正值=在沙上
                         float d = float.PositiveInfinity;
                         if (includeTerrain && _terrain != null)
                         {
@@ -177,13 +185,8 @@ namespace Sandcastle
                             d = SmoothMin(d, di, smoothK);
                         }
 
-                        // 边缘强制为正值（空气），让 MC 不在边界生成卡断面
                         if (atBorder) d = Mathf.Max(d, 0.5f);
-
-                        // 叠加侵蚀场（侵蚀量越大，实体越薄，SDF 越趋近 0/正值）
-                        d += _erosion[Index(x, y, z)];
-
-                        _sdf[Index(x, y, z)] = d;
+                        _sdfBase[Index(x, y, z)] = d;
                     }
                 }
             }
