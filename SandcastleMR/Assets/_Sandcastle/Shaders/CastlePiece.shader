@@ -107,16 +107,40 @@ Shader "Sandcastle/CastlePiece"
             {
                 float3 posWS = IN.positionWS;
 
-                // ===== 视觉与 Sand shader 完全一致 =====
-                float2 wpos = posWS.xz;
-                float n = fbm(wpos * _NoiseScale * 0.1);
-                float grain = valueNoise(wpos * _NoiseScale);
+                // ===== 三面投影采样噪声（替代 UV，避免接缝） =====
+                float3 absN = abs(normalize(IN.normalWS));
+                // 权重：哪个轴法线分量大就用哪个平面
+                float3 weights = absN / (absN.x + absN.y + absN.z + 0.0001);
+
+                // XZ 平面（顶/底）
+                float2 uvXZ = posWS.xz;
+                // XY 平面（前/后）
+                float2 uvXY = posWS.xy;
+                // YZ 平面（左/右）
+                float2 uvYZ = posWS.yz;
+
+                // 三面分别采样噪声
+                float nXZ = fbm(uvXZ * _NoiseScale * 0.1);
+                float nXY = fbm(uvXY * _NoiseScale * 0.1);
+                float nYZ = fbm(uvYZ * _NoiseScale * 0.1);
+                float n = nXZ * weights.y + nXY * weights.z + nYZ * weights.x;
+
+                float grainXZ = valueNoise(uvXZ * _NoiseScale);
+                float grainXY = valueNoise(uvXY * _NoiseScale);
+                float grainYZ = valueNoise(uvYZ * _NoiseScale);
+                float grain = grainXZ * weights.y + grainXY * weights.z + grainYZ * weights.x;
+
                 float blendN = saturate(n * 0.7 + grain * 0.3);
                 float3 albedo = _BaseColor.rgb * (blendN * _NoiseStrength + (1.0 - _NoiseStrength));
-                float sparkle = step(0.985, hash21(floor(wpos * _SparkleScale)));
+
+                // 闪光颗粒（三面混合）
+                float spXZ = step(0.985, hash21(floor(uvXZ * _SparkleScale)));
+                float spXY = step(0.985, hash21(floor(uvXY * _SparkleScale)));
+                float spYZ = step(0.985, hash21(floor(uvYZ * _SparkleScale)));
+                float sparkle = spXZ * weights.y + spXY * weights.z + spYZ * weights.x;
                 albedo += sparkle * _SparkleStrength;
 
-                // ===== 唯一的特殊处理：交界处法线融合 =====
+                // ===== 交界处法线融合 =====
                 float heightAboveSand = posWS.y - (_PieceBaseY + _BlendOffset);
                 float blend = saturate(heightAboveSand / max(_BlendHeight, 0.001));
                 blend = smoothstep(0.0, 1.0, blend);
