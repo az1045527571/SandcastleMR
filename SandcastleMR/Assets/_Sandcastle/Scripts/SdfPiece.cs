@@ -21,6 +21,12 @@ namespace Sandcastle
 
         void OnEnable()
         {
+            // 不在这里自动注册，由放置器设完参数后手动调 RegisterToVolume()
+        }
+
+        /// <summary>手动注册到 SdfVolume，应在设完 radius/shape 后调用</summary>
+        public void RegisterToVolume()
+        {
             _volume = FindObjectOfType<SdfVolume>();
             if (_volume != null)
             {

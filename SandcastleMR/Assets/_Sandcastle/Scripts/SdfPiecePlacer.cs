@@ -97,6 +97,7 @@ public class SdfPiecePlacer : MonoBehaviour
         var piece = go.AddComponent<SdfPiece>();
         piece.shape = SdfPiece.ShapeType.Sphere;
         piece.radius = _currentRadius;
+        piece.RegisterToVolume();
 
         // 同步让沙地隆起
         if (_terrain != null)
