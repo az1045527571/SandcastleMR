@@ -254,7 +254,7 @@ public class PiecePlacer : MonoBehaviour
         if (shader == null) shader = Shader.Find("Universal Render Pipeline/Lit");
         var mat = new Material(shader);
         mat.SetColor("_BaseColor", new Color(0.88f, 0.78f, 0.58f));
-        mat.SetColor("_SandColor", new Color(0.92f, 0.82f, 0.62f));
+        mat.SetColor("_SandColor", new Color(0.45f, 0.32f, 0.20f));
         mat.SetFloat("_Smoothness", 0.15f);
         body.GetComponent<Renderer>().sharedMaterial = mat;
         top.GetComponent<Renderer>().sharedMaterial = mat;

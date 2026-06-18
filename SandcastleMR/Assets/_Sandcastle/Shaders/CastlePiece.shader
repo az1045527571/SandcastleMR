@@ -3,7 +3,7 @@ Shader "Sandcastle/CastlePiece"
     Properties
     {
         _BaseColor ("Piece Color", Color) = (0.88, 0.78, 0.58, 1)
-        _SandColor ("Sand Color (融合目标)", Color) = (0.92, 0.82, 0.62, 1)
+        _SandColor ("Sand Color (融合目标)", Color) = (0.45, 0.32, 0.20, 1)
         _Smoothness ("Smoothness", Range(0,1)) = 0.15
 
         [Header(Blend Settings)]

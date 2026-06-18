@@ -86,6 +86,11 @@ public class SandcastleBootstrap : MonoBehaviour
         var placerGo = new GameObject("PiecePlacer");
         placerGo.transform.SetParent(transform, false);
         placerGo.AddComponent<PiecePlacer>();
+
+        // Debug UI
+        var dbgGo = new GameObject("DebugUI");
+        dbgGo.transform.SetParent(transform, false);
+        dbgGo.AddComponent<SandcastleDebugUI>();
     }
 
     void BuildWater()
