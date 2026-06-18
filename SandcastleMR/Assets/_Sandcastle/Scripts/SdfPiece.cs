@@ -22,7 +22,15 @@ namespace Sandcastle
         void OnEnable()
         {
             _volume = FindObjectOfType<SdfVolume>();
-            if (_volume != null) _volume.Register(this);
+            if (_volume != null)
+            {
+                _volume.Register(this);
+                Debug.Log($"[SdfPiece] Registered at {transform.position}, radius={radius}");
+            }
+            else
+            {
+                Debug.LogWarning("[SdfPiece] No SdfVolume found!");
+            }
         }
 
         void OnDisable()

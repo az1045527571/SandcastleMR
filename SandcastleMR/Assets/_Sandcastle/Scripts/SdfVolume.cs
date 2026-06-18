@@ -90,6 +90,7 @@ namespace Sandcastle
         {
             EvaluateSdf();
             ExtractMesh();
+            Debug.Log($"[SdfVolume] Pieces={_pieces.Count}, Verts={_vertBuf.Count}, Tris={_triBuf.Count/3}, Bounds={_mesh.bounds}");
         }
 
         /// <summary>对每个体素求所有 piece 的 smooth min。</summary>
