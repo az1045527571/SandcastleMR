@@ -43,6 +43,9 @@ namespace Sandcastle
             float[] sdf = _volume.GetSdfData();
             if (sdf == null) return;
 
+            // 找 SandTerrain 获取地面高度
+            var terrain = FindObjectOfType<SandTerrain>();
+
             // 统计当前实心体素数
             int solidCount = 0;
             for (int i = 0; i < sdf.Length; i++)
@@ -50,20 +53,36 @@ namespace Sandcastle
 
             Debug.Log($"[Collapse] 检测中... 实心体素={solidCount}, 总体素={sdf.Length}");
 
-            // Flood fill 从底层（y=0）开始，标记所有连着底面的实心体素
+            // 计算每个体素世界位置
+            float dx = _volume.size.x / _volume.resolutionX;
+            float dy = _volume.size.y / _volume.resolutionY;
+            float dz = _volume.size.z / _volume.resolutionZ;
+
+            // Flood fill 仅从沙面以下开始（作为地基）并向上扩散
+            // 这样只有与“地面”连通的实心才算有支撑
             bool[] supported = new bool[sdf.Length];
             Queue<int> queue = new Queue<int>();
 
-            // 种子：底层所有实心体素
+            // 种子：那些 worldY < terrainHeight 的实心体素（即地面以下）
             for (int z = 0; z < nz; z++)
             {
-                for (int x = 0; x < nx; x++)
+                for (int y = 0; y < ny; y++)
                 {
-                    int idx = x + 0 * nx + z * nx * ny;
-                    if (sdf[idx] < 0f)
+                    for (int x = 0; x < nx; x++)
                     {
-                        supported[idx] = true;
-                        queue.Enqueue(idx);
+                        int idx = x + y * nx + z * nx * ny;
+                        if (sdf[idx] >= 0f) continue;
+
+                        Vector3 localPos = new Vector3(x * dx, y * dy, z * dz);
+                        Vector3 worldPos = _volume.LocalToWorld(localPos);
+
+                        // 在沙面以下（地下）= 地基，是种子
+                        float groundY = terrain != null ? terrain.SampleHeight(worldPos) : 0f;
+                        if (worldPos.y < groundY - 0.05f)
+                        {
+                            supported[idx] = true;
+                            queue.Enqueue(idx);
+                        }
                     }
                 }
             }

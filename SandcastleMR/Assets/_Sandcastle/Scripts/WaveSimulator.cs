@@ -16,7 +16,7 @@ namespace Sandcastle
         [Tooltip("基础水位（世界 Y）")]
         public float baseWaterLevel = 0f;
         [Tooltip("涨潮峰值水位（高于基础水位多少米）")]
-        public float waveAmplitude = 0.10f;
+        public float waveAmplitude = 0.25f;
 
         [Header("周期")]
         [Tooltip("涨潮周期（秒）")]
