@@ -2,16 +2,17 @@ Shader "Sandcastle/CastlePiece"
 {
     Properties
     {
-        _BaseColor ("Piece Color", Color) = (0.88, 0.78, 0.58, 1)
-        _SandColor ("Sand Color (融合目标)", Color) = (0.92, 0.82, 0.62, 1)
-        _Smoothness ("Smoothness", Range(0,1)) = 0.15
+        _BaseColor ("Base Color (干沙)", Color) = (0.92, 0.82, 0.62, 1)
+        _WetColor ("Wet Color (湿沙)", Color) = (0.55, 0.45, 0.32, 1)
+        _NoiseScale ("Noise Scale", Float) = 6.0
+        _NoiseStrength ("Noise Strength", Range(0,1)) = 0.25
+        _SparkleStrength ("Sparkle Strength", Range(0,1)) = 0.3
+        _SparkleScale ("Sparkle Scale", Float) = 80.0
 
-        [Header(Blend Settings)]
-        _BlendHeight ("Blend Height (融合带高度/米)", Float) = 0.4
-        _BlendOffset ("Blend Offset (从沙面往上偏移)", Float) = 0.02
-        _NoiseScale ("Noise Scale (融合边缘噪声)", Float) = 12.0
-        _NoiseStrength ("Noise Strength", Range(0,0.3)) = 0.1
-        _PieceBaseY ("Piece Base Y (脚下沙面世界高度)", Float) = 0.0
+        [Header(Normal Blend)]
+        _BlendHeight ("Blend Height (法线融合带高度/米)", Float) = 0.4
+        _BlendOffset ("Blend Offset", Float) = 0.02
+        _PieceBaseY ("Piece Base Y (脚下沙面高度)", Float) = 0.0
     }
 
     SubShader
@@ -34,18 +35,15 @@ Shader "Sandcastle/CastlePiece"
 
             CBUFFER_START(UnityPerMaterial)
                 float4 _BaseColor;
-                float4 _SandColor;
-                float _Smoothness;
-                float _BlendHeight;
-                float _BlendOffset;
+                float4 _WetColor;
                 float _NoiseScale;
                 float _NoiseStrength;
+                float _SparkleStrength;
+                float _SparkleScale;
+                float _BlendHeight;
+                float _BlendOffset;
                 float _PieceBaseY;
             CBUFFER_END
-
-            // 从 SandTerrain 脚本传入的全局变量
-            float _SandTerrainMinY;
-            float _SandTerrainMaxY;
 
             struct Attributes
             {
@@ -80,6 +78,19 @@ Shader "Sandcastle/CastlePiece"
                 return lerp(lerp(a, b, u.x), lerp(c, d, u.x), u.y);
             }
 
+            float fbm(float2 p)
+            {
+                float v = 0.0;
+                float amp = 0.5;
+                for (int i = 0; i < 3; i++)
+                {
+                    v += valueNoise(p) * amp;
+                    p *= 2.0;
+                    amp *= 0.5;
+                }
+                return v;
+            }
+
             Varyings vert(Attributes IN)
             {
                 Varyings OUT;
@@ -96,37 +107,31 @@ Shader "Sandcastle/CastlePiece"
             {
                 float3 posWS = IN.positionWS;
 
-                float sandSurface = _PieceBaseY + _BlendOffset;
-                float heightAboveSand = posWS.y - sandSurface;
+                // ===== 视觉与 Sand shader 完全一致 =====
+                float2 wpos = posWS.xz;
+                float n = fbm(wpos * _NoiseScale * 0.1);
+                float grain = valueNoise(wpos * _NoiseScale);
+                float blendN = saturate(n * 0.7 + grain * 0.3);
+                float3 albedo = _BaseColor.rgb * (blendN * _NoiseStrength + (1.0 - _NoiseStrength));
+                float sparkle = step(0.985, hash21(floor(wpos * _SparkleScale)));
+                albedo += sparkle * _SparkleStrength;
 
-                // 噪声扰动边缘
-                float noise = valueNoise(posWS.xz * _NoiseScale) * _NoiseStrength;
-                heightAboveSand += noise;
-
-                // 融合因子：0=沙面 1=构件
+                // ===== 唯一的特殊处理：交界处法线融合 =====
+                float heightAboveSand = posWS.y - (_PieceBaseY + _BlendOffset);
                 float blend = saturate(heightAboveSand / max(_BlendHeight, 0.001));
                 blend = smoothstep(0.0, 1.0, blend);
 
-                // 颜色融合
-                float3 albedo = lerp(_SandColor.rgb, _BaseColor.rgb, blend);
-
-                // 【核心】法线融合：交界处法线从沙面朝上(0,1,0)渐变到构件自身法线
                 float3 pieceN = normalize(IN.normalWS);
                 float3 sandN = float3(0, 1, 0);
                 float3 N = normalize(lerp(sandN, pieceN, blend));
 
-                // 光照用融合后的法线
+                // 光照
                 Light mainLight = GetMainLight();
                 float NdotL = saturate(dot(N, mainLight.direction));
                 float3 diffuse = albedo * mainLight.color.rgb * NdotL;
                 float3 ambient = SampleSH(N) * albedo;
 
-                // 高光（融合区弱，顶部强）
-                float3 V = normalize(GetWorldSpaceViewDir(posWS));
-                float3 H = normalize(mainLight.direction + V);
-                float spec = pow(saturate(dot(N, H)), 32.0) * _Smoothness * blend;
-
-                float3 color = diffuse + ambient + spec;
+                float3 color = diffuse + ambient;
                 color = MixFog(color, IN.fogCoord);
                 return half4(color, 1);
             }
