@@ -96,29 +96,32 @@ Shader "Sandcastle/CastlePiece"
             {
                 float3 posWS = IN.positionWS;
 
-            // 从 SandTerrain 全局变量读基准，但优先用每个实例的 _PieceBaseY（该构件脚下的沙面高度）
-            float sandSurface = _PieceBaseY + _BlendOffset;
+                float sandSurface = _PieceBaseY + _BlendOffset;
                 float heightAboveSand = posWS.y - sandSurface;
 
-                // 噪声扰动融合边缘，避免完美水平切割
+                // 噪声扰动边缘
                 float noise = valueNoise(posWS.xz * _NoiseScale) * _NoiseStrength;
                 heightAboveSand += noise;
 
-                // 融合因子：0 = 完全沙色，1 = 完全构件色
-                float blend = saturate(heightAboveSand / _BlendHeight);
-                // 用 smoothstep 让过渡更柔和
+                // 融合因子：0=沙面 1=构件
+                float blend = saturate(heightAboveSand / max(_BlendHeight, 0.001));
                 blend = smoothstep(0.0, 1.0, blend);
 
+                // 颜色融合
                 float3 albedo = lerp(_SandColor.rgb, _BaseColor.rgb, blend);
 
-                // 光照
-                float3 N = normalize(IN.normalWS);
+                // 【核心】法线融合：交界处法线从沙面朝上(0,1,0)渐变到构件自身法线
+                float3 pieceN = normalize(IN.normalWS);
+                float3 sandN = float3(0, 1, 0);
+                float3 N = normalize(lerp(sandN, pieceN, blend));
+
+                // 光照用融合后的法线
                 Light mainLight = GetMainLight();
                 float NdotL = saturate(dot(N, mainLight.direction));
                 float3 diffuse = albedo * mainLight.color.rgb * NdotL;
                 float3 ambient = SampleSH(N) * albedo;
 
-                // 底部湿沙微反光
+                // 高光（融合区弱，顶部强）
                 float3 V = normalize(GetWorldSpaceViewDir(posWS));
                 float3 H = normalize(mainLight.direction + V);
                 float spec = pow(saturate(dot(N, H)), 32.0) * _Smoothness * blend;
