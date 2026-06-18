@@ -14,20 +14,20 @@ namespace Sandcastle
     {
         [Header("水位")]
         [Tooltip("基础水位（世界 Y）")]
-        public float baseWaterLevel = 0f;
+        public float baseWaterLevel = -0.08f;
         [Tooltip("涨潮峰值水位（高于基础水位多少米）")]
-        public float waveAmplitude = 0.25f;
+        public float waveAmplitude = 0.06f;
 
         [Header("周期")]
         [Tooltip("涨潮周期（秒）")]
-        public float wavePeriod = 3f;
+        public float wavePeriod = 5f;
         [Tooltip("每个周期内浪头持续比例（0~1，0.3=30%时间在浪上）")]
         [Range(0.05f, 0.8f)]
         public float surgeRatio = 0.3f;
 
         [Header("侵蚀")]
         [Tooltip("浪头每秒侵蚀量（米）。SDF值往正方向加，表面后退")]
-        public float erodePerSecond = 0.5f;
+        public float erodePerSecond = 0.02f;
         [Tooltip("侵蚀作用范围: 离水位多少米内的体素受侵蚀")]
         public float erodeBandHeight = 1.0f;
 
@@ -57,20 +57,12 @@ namespace Sandcastle
 
         System.Collections.IEnumerator InitWaterLevel()
         {
-            yield return null;  // 跳一帧
-            if (simpleWave != null && simpleWave.transform.position.y > -10f)
-            {
-                baseWaterLevel = simpleWave.transform.position.y;
-            }
-            else
-            {
-                // 安全回退：用默认值 -0.08
-                baseWaterLevel = -0.08f;
-            }
+            yield return null;
+            // baseWaterLevel 已经硬编码 -0.08，此处只初始化 shader
             _currentLevel = baseWaterLevel;
             Shader.SetGlobalFloat("_GlobalWaterY", baseWaterLevel + waveAmplitude);
             Shader.SetGlobalFloat("_GlobalWetTransition", 0.05f);
-            Debug.Log($"[Wave] 初始化: baseWaterLevel = {baseWaterLevel:F3}, simpleWave.y = {(simpleWave != null ? simpleWave.transform.position.y : -999f):F3}");
+            Debug.Log($"[Wave] 初始化: baseWaterLevel = {baseWaterLevel:F3}");
         }
 
         void Update()
@@ -105,7 +97,7 @@ namespace Sandcastle
             // 浪头时段触发侵蚀 + 湿润
             if (surge > 0.3f && sdfVolume != null)
             {
-                sdfVolume.ErodeBelowWater(_currentLevel, erodePerSecond * Time.deltaTime, erodeBandHeight);
+                sdfVolume.SurfaceErode(_currentLevel, erodePerSecond * Time.deltaTime, erodeBandHeight);
                 _eroding = true;
 
                 // SandTerrain 也变湿（SDF 区域外的沙地）

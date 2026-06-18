@@ -130,7 +130,38 @@ namespace Sandcastle
         /// 侵蚀水位以下一定带幅内的体素。
         /// 增加那些体素的侵蚀场。调用后需手动 RebuildMesh()。
         /// </summary>
-        public void ErodeBelowWater(float waterY, float amount, float bandHeight)
+        /// <summary>
+        /// 均匀表面侵蚀：所有 SDF 表面附近的体素给予同样的侵蚀量。
+        /// 这样沙堡边缘会“化开”，整体变小变圆，而不是底部被断。
+        /// 只作用于海面以下一定范围内的实体。
+        /// </summary>
+        public void SurfaceErode(float waterY, float amount, float bandHeight)
+        {
+            float dy = size.y / resolutionY;
+
+            for (int z = 0; z < Nz; z++)
+            {
+                for (int y = 0; y < Ny; y++)
+                {
+                    float localY = y * dy;
+                    float worldY = LocalToWorld(new Vector3(0, localY, 0)).y;
+                    // 只侵蚀海面以下 5cm 到以上 30cm 范围内的体素
+                    if (worldY > waterY + 0.30f) continue;
+                    if (worldY < waterY - 0.05f) continue;
+                    for (int x = 0; x < Nx; x++)
+                    {
+                        int idx = Index(x, y, z);
+                        float curr = _sdfBase[idx] + _erosion[idx];
+                        // 被海水泡到 = 变湿
+                        if (worldY <= waterY) _wetness[idx] = 1f;
+                        // 只侵蚀表面体素（负但靠近 0）——这样表面后退，下层变表面，下次再被侵蚀
+                        if (curr > 0f) continue;
+                        if (curr < -0.03f) continue;  // 只侵蚀最表面的一层
+                        _erosion[idx] += amount;
+                    }
+                }
+            }
+        }
         {
             float dy = size.y / resolutionY;
 
