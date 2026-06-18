@@ -212,9 +212,10 @@ namespace Sandcastle
                             _vertBuf.Add(v0);
                             _vertBuf.Add(v1);
                             _vertBuf.Add(v2);
+                            // 翻转绕序（修复法线朝内问题）
                             _triBuf.Add(baseIdx);
-                            _triBuf.Add(baseIdx + 1);
                             _triBuf.Add(baseIdx + 2);
+                            _triBuf.Add(baseIdx + 1);
                         }
                     }
                 }
