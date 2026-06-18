@@ -121,6 +121,11 @@ namespace Sandcastle
                 {
                     for (int x = 0; x < Nx; x++)
                     {
+                        // 边缘淡出：距离体积边缘 2 格内强制为正值（空气）避免 MC 在边界生成卡断几何
+                        int borderFade = 2;
+                        bool atBorder = (x < borderFade || x >= Nx - borderFade ||
+                                         z < borderFade || z >= Nz - borderFade);
+
                         Vector3 localPos = new Vector3(x * dx, y * dy, z * dz);
                         Vector3 worldPos = LocalToWorld(localPos);
 
@@ -137,6 +142,9 @@ namespace Sandcastle
                             float di = _pieces[i].SampleSdf(worldPos);
                             d = SmoothMin(d, di, smoothK);
                         }
+
+                        // 边缘强制为正值（空气），让 MC 不在边界生成卡断面
+                        if (atBorder) d = Mathf.Max(d, 0.5f);
                         _sdf[Index(x, y, z)] = d;
                     }
                 }
