@@ -86,6 +86,11 @@ public class SandcastleBootstrap : MonoBehaviour
         var brushGo = new GameObject("SandBrush");
         brushGo.transform.SetParent(transform, false);
         brushGo.AddComponent<SandBrush>();
+
+        // 挂上构件放置器
+        var placerGo = new GameObject("PiecePlacer");
+        placerGo.transform.SetParent(transform, false);
+        placerGo.AddComponent<PiecePlacer>();
     }
 
     void BuildWater()
