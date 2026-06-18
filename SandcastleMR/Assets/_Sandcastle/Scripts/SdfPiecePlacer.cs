@@ -37,11 +37,18 @@ public class SdfPiecePlacer : MonoBehaviour
         if (_cam == null || _volume == null) return;
         if (!enabled) return;
 
-        // +/- 调大小
-        if (Input.GetKeyDown(KeyCode.Equals) || Input.GetKeyDown(KeyCode.KeypadPlus))
-            _currentRadius = Mathf.Min(_currentRadius + radiusStep, maxRadius);
-        if (Input.GetKeyDown(KeyCode.Minus) || Input.GetKeyDown(KeyCode.KeypadMinus))
-            _currentRadius = Mathf.Max(_currentRadius - radiusStep, minRadius);
+        // 滚轮调球半径（在 SDF 模式下会抢占相机缩放，这里只在有命中射线时响应）
+        float scroll = Input.GetAxis("Mouse ScrollWheel");
+        if (Mathf.Abs(scroll) > 0.001f)
+        {
+            _currentRadius = Mathf.Clamp(_currentRadius + scroll * 1f, minRadius, maxRadius);
+        }
+
+        // +/- 调大小（多种键充备，防止输入法吃键）
+        if (Input.GetKey(KeyCode.Equals) || Input.GetKey(KeyCode.KeypadPlus) || Input.GetKey(KeyCode.Plus))
+            _currentRadius = Mathf.Min(_currentRadius + radiusStep * Time.deltaTime * 5f, maxRadius);
+        if (Input.GetKey(KeyCode.Minus) || Input.GetKey(KeyCode.KeypadMinus))
+            _currentRadius = Mathf.Max(_currentRadius - radiusStep * Time.deltaTime * 5f, minRadius);
 
         // 射线
         Ray ray = _cam.ScreenPointToRay(Input.mousePosition);
