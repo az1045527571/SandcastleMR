@@ -130,6 +130,11 @@ public class SandcastleBootstrap : MonoBehaviour
         var waterGo = new GameObject("Water");
         waterGo.transform.SetParent(transform, false);
         waterGo.AddComponent<SimpleWave>();
+
+        // 海浪侵蚀模拟器
+        var waveGo = new GameObject("WaveSimulator");
+        waveGo.transform.SetParent(transform, false);
+        waveGo.AddComponent<WaveSimulator>();
     }
 
     void BuildCamera()

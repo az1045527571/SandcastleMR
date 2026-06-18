@@ -38,6 +38,7 @@ namespace Sandcastle
 
         // 体素数据
         private float[] _sdf;
+        private float[] _erosion;  // 侵蚀场：每个体素累计的 SDF 偏移量（正值=被侵蚀）
         private int Nx => resolutionX + 1;
         private int Ny => resolutionY + 1;
         private int Nz => resolutionZ + 1;
@@ -64,6 +65,7 @@ namespace Sandcastle
             _meshFilter.sharedMesh = _mesh;
 
             _sdf = new float[Nx * Ny * Nz];
+            _erosion = new float[Nx * Ny * Nz];
             _terrain = FindObjectOfType<SandTerrain>();
         }
 
@@ -101,6 +103,38 @@ namespace Sandcastle
         /// <summary>
         /// 重新计算整个 SDF 并提取 mesh。
         /// </summary>
+        /// <summary>
+        /// 侵蚀水位以下一定带幅内的体素。
+        /// 增加那些体素的侵蚀场。调用后需手动 RebuildMesh()。
+        /// </summary>
+        public void ErodeBelowWater(float waterY, float amount, float bandHeight)
+        {
+            float dx = size.x / resolutionX;
+            float dy = size.y / resolutionY;
+            float dz = size.z / resolutionZ;
+
+            for (int z = 0; z < Nz; z++)
+            {
+                for (int y = 0; y < Ny; y++)
+                {
+                    Vector3 localPos = new Vector3(0, y * dy, 0);
+                    Vector3 worldPos = LocalToWorld(localPos);
+                    float vy = worldPos.y;
+                    // 只处理水位附近的体素
+                    if (vy > waterY) continue;
+                    if (vy < waterY - bandHeight) continue;
+                    for (int x = 0; x < Nx; x++)
+                    {
+                        int idx = Index(x, y, z);
+                        // 只侵蚀表面附近的体素（在实体内部但靠近表面）
+                        if (_sdf[idx] > 0f) continue;     // 空气不侵蚀
+                        if (_sdf[idx] < -0.05f) continue; // 深处不侵蚀
+                        _erosion[idx] += amount;
+                    }
+                }
+            }
+        }
+
         public void RebuildMesh()
         {
             EvaluateSdf();
@@ -145,6 +179,10 @@ namespace Sandcastle
 
                         // 边缘强制为正值（空气），让 MC 不在边界生成卡断面
                         if (atBorder) d = Mathf.Max(d, 0.5f);
+
+                        // 叠加侵蚀场（侵蚀量越大，实体越薄，SDF 越趋近 0/正值）
+                        d += _erosion[Index(x, y, z)];
+
                         _sdf[Index(x, y, z)] = d;
                     }
                 }
