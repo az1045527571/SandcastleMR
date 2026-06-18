@@ -66,6 +66,12 @@ namespace Sandcastle
             _terrain = FindObjectOfType<SandTerrain>();
         }
 
+        void Start()
+        {
+            // 初始建一次，即使没有球，地形 SDF 也会填充地面 mesh
+            RebuildMesh();
+        }
+
         public void Register(SdfPiece p)
         {
             if (!_pieces.Contains(p)) _pieces.Add(p);
