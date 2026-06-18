@@ -99,9 +99,9 @@ public class SandcastleBootstrap : MonoBehaviour
         sdfGo.transform.localPosition = new Vector3(0f, 0.1f, 0f); // 略高于沙面
         sdfGo.AddComponent<MeshFilter>();
         var sdfMr = sdfGo.AddComponent<MeshRenderer>();
-        Shader sandShader = Shader.Find("Sandcastle/Sand");
-        if (sandShader == null) sandShader = Shader.Find("Universal Render Pipeline/Lit");
-        sdfMr.sharedMaterial = new Material(sandShader);
+        Shader sdfSandShader = Shader.Find("Sandcastle/Sand");
+        if (sdfSandShader == null) sdfSandShader = Shader.Find("Universal Render Pipeline/Lit");
+        sdfMr.sharedMaterial = new Material(sdfSandShader);
         sdfGo.AddComponent<SdfVolume>();
 
         // SDF 放置器（按 2 切换到 SDF 模式）
