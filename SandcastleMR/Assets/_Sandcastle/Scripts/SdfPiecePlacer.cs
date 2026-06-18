@@ -135,7 +135,13 @@ public class SdfPiecePlacer : MonoBehaviour
 
     void Place(Vector3 pos)
     {
-        // clamp 到 SDF 体积
+        // 强制 Y 吸附到地形高度
+        if (_terrain != null)
+        {
+            pos.y = _terrain.SampleHeight(pos);
+        }
+
+        // clamp XZ 到 SDF 体积范围
         if (_volume != null)
         {
             Vector3 vCenter = _volume.transform.position;
@@ -144,7 +150,6 @@ public class SdfPiecePlacer : MonoBehaviour
             Vector3 vMax = vCenter + vSize * 0.5f;
             float r = (_mode == Mode.Sphere) ? _currentRadius : 0.3f;
             pos.x = Mathf.Clamp(pos.x, vMin.x + r, vMax.x - r);
-            pos.y = Mathf.Clamp(pos.y, vMin.y + r, vMax.y - r);
             pos.z = Mathf.Clamp(pos.z, vMin.z + r, vMax.z - r);
         }
 
