@@ -4,12 +4,6 @@ namespace Sandcastle
 {
     /// <summary>
     /// 烘焙好的 mesh SDF 资产。
-    /// - bounds：mesh 的本地包围盒（含 padding）
-    /// - sdfTex：3D 纹理 RFloat，存到表面带符号距离（mesh 局部坐标系下）
-    /// - resolution：3D 纹理分辨率（每个轴）
-    /// 
-    /// 运行时采样：
-    /// 世界坐标 → 转 prefab 本地坐标 → 归一化到 [0,1] → 采样 3D 纹理
     /// </summary>
     [CreateAssetMenu(menuName = "Sandcastle/Mesh SDF Asset", fileName = "MeshSdf")]
     public class MeshSdfAsset : ScriptableObject
@@ -18,20 +12,31 @@ namespace Sandcastle
         public Vector3Int resolution = new Vector3Int(32, 32, 32);
         public Texture3D sdfTex;
 
-        /// <summary>世界坐标 → 该资产的 SDF 值（已乘缩放）。</summary>
+        [System.NonSerialized]
+        private float[] _cachedSdf;
+
+        void EnsureCache()
+        {
+            if (_cachedSdf != null || sdfTex == null) return;
+            var pixels = sdfTex.GetPixels();
+            _cachedSdf = new float[pixels.Length];
+            for (int i = 0; i < pixels.Length; i++) _cachedSdf[i] = pixels[i].r;
+        }
+
+        /// <summary>本地坐标 → SDF 值</summary>
         public float SampleAtLocal(Vector3 localPos)
         {
             if (sdfTex == null) return float.PositiveInfinity;
+            EnsureCache();
 
             Vector3 min = bounds.min;
             Vector3 size = bounds.size;
-            // 归一化到 [0,1]
             Vector3 uvw;
             uvw.x = (localPos.x - min.x) / size.x;
             uvw.y = (localPos.y - min.y) / size.y;
             uvw.z = (localPos.z - min.z) / size.z;
 
-            // 超出包围盒：返回到包围盒最近距离的近似（取边界值 + 距离 box）
+            // 包围盒外：估算到包围盒的距离
             if (uvw.x < 0 || uvw.x > 1 || uvw.y < 0 || uvw.y > 1 || uvw.z < 0 || uvw.z > 1)
             {
                 Vector3 clamped = new Vector3(
@@ -51,7 +56,6 @@ namespace Sandcastle
 
         float SampleTex3D(Vector3 uvw)
         {
-            // 三线性插值采样
             int rx = resolution.x;
             int ry = resolution.y;
             int rz = resolution.z;
@@ -68,16 +72,14 @@ namespace Sandcastle
             float ty = fy - y0;
             float tz = fz - z0;
 
-            // 读 8 个角
-            var pixels = sdfTex.GetPixels();
-            float c000 = pixels[Idx(x0, y0, z0, rx, ry)].r;
-            float c100 = pixels[Idx(x1, y0, z0, rx, ry)].r;
-            float c010 = pixels[Idx(x0, y1, z0, rx, ry)].r;
-            float c110 = pixels[Idx(x1, y1, z0, rx, ry)].r;
-            float c001 = pixels[Idx(x0, y0, z1, rx, ry)].r;
-            float c101 = pixels[Idx(x1, y0, z1, rx, ry)].r;
-            float c011 = pixels[Idx(x0, y1, z1, rx, ry)].r;
-            float c111 = pixels[Idx(x1, y1, z1, rx, ry)].r;
+            float c000 = _cachedSdf[Idx(x0, y0, z0, rx, ry)];
+            float c100 = _cachedSdf[Idx(x1, y0, z0, rx, ry)];
+            float c010 = _cachedSdf[Idx(x0, y1, z0, rx, ry)];
+            float c110 = _cachedSdf[Idx(x1, y1, z0, rx, ry)];
+            float c001 = _cachedSdf[Idx(x0, y0, z1, rx, ry)];
+            float c101 = _cachedSdf[Idx(x1, y0, z1, rx, ry)];
+            float c011 = _cachedSdf[Idx(x0, y1, z1, rx, ry)];
+            float c111 = _cachedSdf[Idx(x1, y1, z1, rx, ry)];
 
             float c00 = Mathf.Lerp(c000, c100, tx);
             float c10 = Mathf.Lerp(c010, c110, tx);
