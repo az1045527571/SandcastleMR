@@ -144,7 +144,7 @@ public class PiecePlacer : MonoBehaviour
             _terrain.Pile(hit.point, radius * 0.5f, moundHeight * 0.4f);
 
             // 塔往下沉，让沙堆把底部接缝盖住
-            float sink = piece.baseSink * _currentScale + 0.08f * _currentScale;
+            float sink = piece.baseSink * _currentScale + 0.18f * _currentScale;
             go.transform.position = hit.point - new Vector3(0f, sink, 0f);
         }
     }
