@@ -42,18 +42,16 @@ namespace Sandcastle
         [Tooltip("铲子初始/基础姿态欧拉角（在面向相机的基础上叠加）。x=俯仰/倾斜, y=纵向翻转, z=滚转")]
         public Vector3 baseEuler = new Vector3(45f, 180f, 0f);
 
-        [Header("铲动动画")]
-        [Tooltip("挬动强度随时间的曲线（0~1 时间 → 0~1 强度）。所有挬动/俱冲都乘这个值")]
-        public AnimationCurve swingCurve = new AnimationCurve(
-            new Keyframe(0f, 0f), new Keyframe(0.5f, 1f), new Keyframe(1f, 0f));
-        [Tooltip("铲/招时绕 Z 挬动的峰值角度（正负决定挬动方向）")]
-        public float swingAngle = -55f;
-        [Tooltip("挬动单程时长（秒）")]
-        public float swingDuration = 0.28f;
-        [Tooltip("俱冲向下深度（米）")]
-        public float plungeDown = 0.12f;
-        [Tooltip("俱冲向前距离（米，沿铲子朝向）")]
-        public float plungeForward = 0.1f;
+        [Header("铲动动画（按住抬起 / 松开回落）")]
+        [Tooltip("抬起量随时间的过渡曲线（0~1）。用于按下/松开的平滑感")]
+        public AnimationCurve liftCurve = new AnimationCurve(
+            new Keyframe(0f, 0f), new Keyframe(1f, 1f));
+        [Tooltip("按住时铲子抬起的角度（绕 Z，正负决定方向）")]
+        public float liftAngle = -55f;
+        [Tooltip("抬起/回落的速度（越大越快）")]
+        public float liftSpeed = 6f;
+        [Tooltip("抬起时向上抬高度（米）")]
+        public float liftUp = 0.08f;
 
         [Header("事件（接音效/粒子）")]
         public UnityEvent OnDig;   // 挖的瞬间
@@ -67,11 +65,9 @@ namespace Sandcastle
 
         private Camera _cam;
 
-        // 挬动动画状态
-        private bool _swinging;
-        private float _swingT;
-        private Quaternion _swingFaceRot;   // 挬动期间锁定的面向机朝向
-        private Vector3 _swingPos;          // 挬动期间锁定的位置
+        // 抬起动画状态（0=默认角度, 1=完全抬起）
+        private float _lift;
+        private bool _holding;
         private SdfVolume _volume;
         private GameObject _shovel;
         private Transform _digPoint;
@@ -82,19 +78,32 @@ namespace Sandcastle
             _cam = Camera.main;
             _volume = FindObjectOfType<SdfVolume>();
 
-            if (shovelPrefab == null)
-                shovelPrefab = Resources.Load<GameObject>("CHANZIGONGJU");
-            if (shovelPrefab != null)
+            // 优先：如果本物体本身就是铲子模型（含 cutbox 子物体），直接用自己
+            var selfDig = FindChild(transform, digPointName);
+            if (selfDig != null)
             {
-                _shovel = Instantiate(shovelPrefab);
-                _shovel.name = "ShovelInstance";
-                _digPoint = FindChild(_shovel.transform, digPointName);
-                var sand = FindChild(_shovel.transform, loadedSandName);
-                if (sand != null) _loadedSand = sand.gameObject;
+                _shovel = gameObject;
+                _digPoint = selfDig;
+                var s = FindChild(transform, loadedSandName);
+                if (s != null) _loadedSand = s.gameObject;
             }
             else
             {
-                Debug.LogWarning("[Shovel] 未找到铲子 prefab（Resources/CHANZIGONGJU 或 Inspector 指定）");
+                // 否则实例化 prefab
+                if (shovelPrefab == null)
+                    shovelPrefab = Resources.Load<GameObject>("CHANZIGONGJU");
+                if (shovelPrefab != null)
+                {
+                    _shovel = Instantiate(shovelPrefab);
+                    _shovel.name = "ShovelInstance";
+                    _digPoint = FindChild(_shovel.transform, digPointName);
+                    var sand = FindChild(_shovel.transform, loadedSandName);
+                    if (sand != null) _loadedSand = sand.gameObject;
+                }
+                else
+                {
+                    Debug.LogWarning("[Shovel] 未找到铲子 prefab（Resources/CHANZIGONGJU 或 Inspector 指定）");
+                }
             }
 
             SetActive(startEnabled);
@@ -111,28 +120,14 @@ namespace Sandcastle
             Ray ray = _cam.ScreenPointToRay(Input.mousePosition);
             bool hit = Physics.Raycast(ray, out RaycastHit rh, 100f);
 
-            // 挬动动画期间：锁定位置/面向，只叠加绕 Z 的挬动，不响应跟随
-            if (_swinging)
-            {
-                _swingT += Time.deltaTime;
-                float u = Mathf.Clamp01(_swingT / Mathf.Max(swingDuration, 1e-3f));
-                float arc = swingCurve.Evaluate(u); // 可在 Inspector 调的曲线
-                float swingZ = arc * swingAngle;
-                if (_shovel != null)
-                {
-                    _shovel.transform.rotation = _swingFaceRot * Quaternion.Euler(baseEuler.x, baseEuler.y, baseEuler.z + swingZ);
-                    // 位置弧线：沿铲子朝向向前 + 向下俱冲再抬起
-                    Vector3 fwd = _swingFaceRot * Vector3.forward;
-                    fwd.y = 0f;
-                    if (fwd.sqrMagnitude > 1e-6f) fwd.Normalize();
-                    Vector3 plunge = fwd * (plungeForward * arc) + Vector3.down * (plungeDown * arc);
-                    _shovel.transform.position = _swingPos + plunge;
-                }
-                if (u >= 1f) _swinging = false;
-                return;
-            }
+            // 抬起量：按住朝 1 过渡，松开朝 0 过渡
+            float target = _holding ? 1f : 0f;
+            _lift = Mathf.MoveTowards(_lift, target, liftSpeed * Time.deltaTime);
+            float liftEval = liftCurve.Evaluate(_lift);
+            float tiltZ = liftEval * liftAngle;
+            float upY = liftEval * liftUp;
 
-            // 铲子跟随鼠标：面向相机 + 基础姿态，让 cutbox 对准命中点
+            // 铲子跟随鼠标：面向相机 + 基础姿态 + 抬起偏移，让 cutbox 对准命中点
             if (hit && _shovel != null)
             {
                 _shovel.SetActive(true);
@@ -141,13 +136,15 @@ namespace Sandcastle
                 Quaternion faceRot = (toCam.sqrMagnitude > 1e-4f)
                     ? Quaternion.LookRotation(toCam.normalized, Vector3.up)
                     : Quaternion.identity;
-                _shovel.transform.rotation = faceRot * Quaternion.Euler(baseEuler);
+                _shovel.transform.rotation = faceRot * Quaternion.Euler(baseEuler.x, baseEuler.y, baseEuler.z + tiltZ);
                 _shovel.transform.position = rh.point;
                 if (_digPoint != null)
                 {
                     Vector3 offset = _digPoint.position - _shovel.transform.position;
                     _shovel.transform.position = rh.point - offset;
                 }
+                // 抬起时整体抬高
+                _shovel.transform.position += Vector3.up * upY;
             }
             else if (_shovel != null)
             {
@@ -158,26 +155,28 @@ namespace Sandcastle
             Vector3 center = (_digPoint != null) ? _digPoint.position : rh.point;
             float rotY = _shovel != null ? _shovel.transform.eulerAngles.y : 0f;
 
-            // 按住左键铲（空铲才能挖），松开招（满铲才能倒）
+            // 按住左键：铲子抬起；空铲按下瞬间挖
             if (hit && Input.GetMouseButtonDown(0) && !IsLoaded)
-                Dig(center, rotY);
-
-            if (Input.GetMouseButtonUp(0) && IsLoaded)
             {
-                Vector3 dropCenter = (_digPoint != null) ? _digPoint.position : center;
-                Drop(dropCenter, rotY);
+                _holding = true;
+                Dig(center, rotY);
             }
-        }
+            // 满铲按住也抬起（拿着沙）
+            else if (Input.GetMouseButtonDown(0) && IsLoaded)
+            {
+                _holding = true;
+            }
 
-        /// <summary>触发一次绕 Z 的铲动挬动动画（锁定当前位置/面向）。</summary>
-        void StartSwing()
-        {
-            if (_shovel == null) return;
-            _swinging = true;
-            _swingT = 0f;
-            _swingPos = _shovel.transform.position;
-            // 从当前总朝向反推出面向机部分（去掉 baseEuler），供挬动期间叠加
-            _swingFaceRot = _shovel.transform.rotation * Quaternion.Inverse(Quaternion.Euler(baseEuler));
+            // 松开左键：铲子回落默认角度；满铲则倒出
+            if (Input.GetMouseButtonUp(0))
+            {
+                _holding = false;
+                if (IsLoaded)
+                {
+                    Vector3 dropCenter = (_digPoint != null) ? _digPoint.position : center;
+                    Drop(dropCenter, rotY);
+                }
+            }
         }
 
         void Dig(Vector3 center, float rotationY)
@@ -186,7 +185,6 @@ namespace Sandcastle
             _volume.RebuildMesh();
             IsLoaded = true;
             UpdateLoadedVisual();
-            StartSwing();
             OnDig?.Invoke();
         }
 
@@ -196,7 +194,6 @@ namespace Sandcastle
             _volume.RebuildMesh();
             IsLoaded = false;
             UpdateLoadedVisual();
-            StartSwing();
             OnDrop?.Invoke();
         }
 

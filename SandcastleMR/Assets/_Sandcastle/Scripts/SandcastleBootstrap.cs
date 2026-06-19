@@ -119,9 +119,18 @@ public class SandcastleBootstrap : MonoBehaviour
         footGo.AddComponent<FootprintManager>();
 
         // 铲子工具（按 T 切换，空铲挖/满铲倒）
-        var shovelGo = new GameObject("ShovelTool");
-        shovelGo.transform.SetParent(transform, false);
-        shovelGo.AddComponent<ShovelTool>();
+        // 铲子工具（按 T 切换）：实例化带 ShovelTool 组件的 prefab
+        // 参数都在 prefab 上，可在编辑器调、push 保存
+        var shovelPrefab = Resources.Load<GameObject>("CHANZIGONGJU");
+        if (shovelPrefab != null)
+        {
+            var shovelGo = Instantiate(shovelPrefab);
+            shovelGo.name = "CHANZIGONGJU";
+        }
+        else
+        {
+            Debug.LogWarning("[Bootstrap] 未找到 Resources/CHANZIGONGJU prefab");
+        }
     }
 
     void BuildWater()
