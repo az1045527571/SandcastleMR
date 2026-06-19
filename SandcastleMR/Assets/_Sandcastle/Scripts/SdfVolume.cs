@@ -217,6 +217,7 @@ namespace Sandcastle
         /// </summary>
         public int RemoveUnsupported(System.Collections.Generic.List<Vector3> removedPointsOut, int maxPoints = 48)
         {
+            PerfProbe.Begin("CPU.RemoveUnsupported");
             int total = _sdf.Length;
             if (_supported == null || _supported.Length != total)
                 _supported = new bool[total];
@@ -276,6 +277,7 @@ namespace Sandcastle
                     }
                 }
             }
+            PerfProbe.End("CPU.RemoveUnsupported");
             return removed;
         }
 
@@ -304,6 +306,7 @@ namespace Sandcastle
         /// </summary>
         public void SurfaceErode(float waterY, float amount, float bandHeight)
         {
+            PerfProbe.Begin("CPU.SurfaceErode");
             float dy = size.y / resolutionY;
             LastErodedPoints.Clear();
 
@@ -342,6 +345,7 @@ namespace Sandcastle
                     }
                 }
             }
+            PerfProbe.End("CPU.SurfaceErode");
         }
 
         /// <summary>玩家浇水：在世界坐标 center 周围 radius 米内增加体素湿度。
@@ -401,15 +405,19 @@ namespace Sandcastle
             {
                 if (_baseDirty)
                 {
+                    PerfProbe.Begin("CPU.EvaluateBase");
                     EvaluateBase();      // 算 CPU _sdfBase(含 bakedmesh, SampleSdf 原生支持)
+                    PerfProbe.End("CPU.EvaluateBase");
                     _baseDirty = false;
                     GpuSand.MarkBaseDirty();   // 通知 GPU 重新上传 base
                 }
                 else GpuSand.MarkDirty();
                 // 合成最终 _sdf = base + erosion。虽然 CPU 不跑 ExtractMesh(MC 交 GPU),
                 // 但 RemoveUnsupported(塌陷)/查询类 API 读 _sdf, 必须保持最新。纯数组加法, 便宜。
+                PerfProbe.Begin("CPU._sdf合成");
                 for (int i = 0; i < _sdf.Length; i++)
                     _sdf[i] = _sdfBase[i] + _erosion[i];
+                PerfProbe.End("CPU._sdf合成");
                 return;
             }
             if (_baseDirty)
@@ -552,6 +560,7 @@ namespace Sandcastle
         /// <summary>Marching Cubes 提取 mesh（CPU 版）。</summary>
         void ExtractMesh()
         {
+            PerfProbe.Begin("CPU.ExtractMesh");
             _vertBuf.Clear();
             _triBuf.Clear();
             _colorBuf.Clear();
@@ -661,6 +670,7 @@ namespace Sandcastle
                 // 空 mesh(全被侵蚀掉)赋给 MeshCollider 会报 "doesn't have any vertices" 警告, 跳过
                 if (_vertBuf.Count > 0) _meshCollider.sharedMesh = _mesh;
             }
+            PerfProbe.End("CPU.ExtractMesh");
         }
 
         void OnDrawGizmosSelected()

@@ -178,22 +178,28 @@ namespace Sandcastle
             }
 
             // erosion / wetness 从 CPU 上传（铲沙/侵蚀/浇水改的，便宜）
+            PerfProbe.Begin("GPU.上传场");
             float[] ero = _vol.GetErosionData();
             if (ero != null && ero.Length == _voxCount) _erosionBuf.SetData(ero);
             float[] wet = _vol.GetWetnessData();
             if (wet != null && wet.Length == _voxCount) _wetnessBuf.SetData(wet);
+            PerfProbe.End("GPU.上传场");
 
             // MarchingCubes
+            PerfProbe.Begin("GPU.MC dispatch");
             _counterBuf.SetData(new uint[] { 0 });
             compute.Dispatch(_kMC,
                 Mathf.CeilToInt(_resX / 4f), Mathf.CeilToInt(_resY / 4f), Mathf.CeilToInt(_resZ / 4f));
 
             uint[] cnt = new uint[1];
-            _counterBuf.GetData(cnt);
+            _counterBuf.GetData(cnt);   // 同步: 阻塞等 GPU dispatch 完
             _vertCount = (int)cnt[0];
+            PerfProbe.End("GPU.MC dispatch");
 
             // 方案 B：回读 GPU 顶点重建 collider mesh，让碰撞跟 GPU 显示一致
+            PerfProbe.Begin("GPU.回读建collider");
             if (updateCollider) RebuildCollider();
+            PerfProbe.End("GPU.回读建collider");
 
             _dirty = false;
         }

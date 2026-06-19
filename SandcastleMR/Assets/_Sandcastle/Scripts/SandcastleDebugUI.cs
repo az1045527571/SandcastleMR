@@ -36,12 +36,18 @@ public class SandcastleDebugUI : MonoBehaviour
     {
         if (!_show) return;
 
-        GUILayout.BeginArea(new Rect(10, 10, 420, 460), GUI.skin.box);
+        GUILayout.BeginArea(new Rect(10, 10, 420, 620), GUI.skin.box);
         // 实时帧率
         float fps = _smoothDt > 1e-5f ? 1f / _smoothDt : 0f;
         string path = _gpuSand != null && _gpuSand.useGpu ? "GPU" : "CPU";
-        GUILayout.Label($"FPS: {fps:F1}  ({_smoothDt * 1000f:F1} ms)  沙子路径: {path}  [G切换]");
+        GUILayout.Label($"FPS: {fps:F1}  ({_smoothDt * 1000f:F1} ms)  沙子路径: {path}  [F2切换]");
         GUILayout.Label("F1=隐藏   2=放置 B=球 V=浇水 X+左键=删");
+
+        // ===== 性能分段计时(定位侵蚀卡在哪一步) =====
+        GUILayout.Label("─── 性能分段 (ms, 平滑) ───");
+        GUILayout.Label(Sandcastle.PerfProbe.Report());
+        if (GUILayout.Button("重置计时计数"))
+            Sandcastle.PerfProbe.Reset();
 
         // ===== 坐标诊断 =====
         GUILayout.Label("─── 坐标诊断 (世界 Y) ───");
