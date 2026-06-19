@@ -107,6 +107,8 @@ namespace Sandcastle
         public float[] GetErosionData() => _erosion;
         /// <summary>base SDF 场(含沙层+所有piece, GPU 渲染路径上传用)。</summary>
         public float[] GetBaseData() => _sdfBase;
+        /// <summary>湿度场(GPU 渲染路径上传用, 湿沙变深)。</summary>
+        public float[] GetWetnessData() => _wetness;
         /// <summary>base 是否需重算（piece 增删），供 GPU 决定是否重跑 EvaluateBase kernel</summary>
         public bool ConsumeBaseDirty() { bool d = _baseDirty; _baseDirty = false; return d; }
         public bool BaseDirty => _baseDirty;

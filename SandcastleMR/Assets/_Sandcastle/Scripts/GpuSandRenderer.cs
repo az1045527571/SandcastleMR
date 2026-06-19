@@ -177,9 +177,11 @@ namespace Sandcastle
                 _baseDirtyGpu = false;
             }
 
-            // erosion 从 CPU 上传（铲沙/侵蚀改的，便宜）; wetness 同理
+            // erosion / wetness 从 CPU 上传（铲沙/侵蚀/浇水改的，便宜）
             float[] ero = _vol.GetErosionData();
             if (ero != null && ero.Length == _voxCount) _erosionBuf.SetData(ero);
+            float[] wet = _vol.GetWetnessData();
+            if (wet != null && wet.Length == _voxCount) _wetnessBuf.SetData(wet);
 
             // MarchingCubes
             _counterBuf.SetData(new uint[] { 0 });
