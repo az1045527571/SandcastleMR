@@ -374,6 +374,10 @@ namespace Sandcastle
             }
         }
 
+        // GPU 渲染器（存在且激活时，CPU 跳过 ExtractMesh，只合成 _sdf 供 GPU 上传）
+        private GpuSandRenderer _gpuSand;
+        public GpuSandRenderer GpuSand { get { if (_gpuSand == null) _gpuSand = GetComponent<GpuSandRenderer>(); return _gpuSand; } }
+
         public void RebuildMesh()
         {
             if (_baseDirty)
@@ -384,6 +388,13 @@ namespace Sandcastle
             // 最终 SDF = base + erosion
             for (int i = 0; i < _sdf.Length; i++)
                 _sdf[i] = _sdfBase[i] + _erosion[i];
+
+            // GPU 路径激活时：跳过 CPU Marching Cubes，改为通知 GPU 重建（从 _sdf 上传）
+            if (GpuSand != null && GpuSand.useGpu)
+            {
+                GpuSand.MarkDirty();
+                return;
+            }
             ExtractMesh();
         }
 

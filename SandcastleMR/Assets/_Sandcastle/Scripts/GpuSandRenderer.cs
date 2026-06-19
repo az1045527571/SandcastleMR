@@ -147,18 +147,15 @@ namespace Sandcastle
 
         void Rebuild()
         {
-            // 阶段一诊断: 直接上传 CPU 已验证的 SDF 场 (绕过 GPU EvaluateBase)
-            // CPU _sdf = _sdfBase + _erosion, 已是最终场; erosion 置 0 避免重复叠加
+            // 从 CPU SdfVolume 的 _sdf (= _sdfBase + _erosion, 含所有 piece/挖改) 上传到 GPU
+            // 写操作改 CPU _sdf 后调 MarkDirty 触发本次重建; 静止帧不进这里
             float[] cpuSdf = _vol.GetSdfData();
-            bool uploaded = false;
             if (cpuSdf != null && cpuSdf.Length == _voxCount)
             {
                 _sdfBaseBuf.SetData(cpuSdf);
-                uploaded = true;
             }
             else
             {
-                // 回退: GPU 算 base
                 compute.Dispatch(_kEvalBase,
                     Mathf.CeilToInt(_nx / 4f), Mathf.CeilToInt(_ny / 4f), Mathf.CeilToInt(_nz / 4f));
             }
