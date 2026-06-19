@@ -63,6 +63,7 @@ namespace Sandcastle
 
         private Mesh _mesh;
         private MeshFilter _meshFilter;
+        private MeshCollider _meshCollider;
 
         // 输出 buffer（避免每次 alloc）
         private List<Vector3> _vertBuf = new List<Vector3>(8192);
@@ -77,6 +78,9 @@ namespace Sandcastle
             _mesh.name = "SdfMesh";
             _mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
             _meshFilter.sharedMesh = _mesh;
+            // 给 SDF mesh 加碰撞体，让射线打在真实沙形上（铲子/放置都靠它定位）
+            _meshCollider = GetComponent<MeshCollider>();
+            if (_meshCollider == null) _meshCollider = gameObject.AddComponent<MeshCollider>();
 
             _sdf = new float[Nx * Ny * Nz];
             _sdfBase = new float[Nx * Ny * Nz];
@@ -614,6 +618,12 @@ namespace Sandcastle
             _mesh.SetTriangles(_triBuf, 0);
             _mesh.SetNormals(_normalBuf);
             _mesh.RecalculateBounds();
+            // 更新碰撞体（MeshCollider 需重新赋值才刷新）
+            if (_meshCollider != null)
+            {
+                _meshCollider.sharedMesh = null;
+                _meshCollider.sharedMesh = _mesh;
+            }
         }
 
         void OnDrawGizmosSelected()

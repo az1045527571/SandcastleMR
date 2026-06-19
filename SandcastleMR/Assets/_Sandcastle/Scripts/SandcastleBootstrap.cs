@@ -89,11 +89,12 @@ public class SandcastleBootstrap : MonoBehaviour
         // size 用 SdfVolume 默认 (5,1.5,5)，不覆写
         sdfGo.AddComponent<SdfVolumeBoundsVisualizer>();
 
-        // 沙面 collider（供放置射线命中），位于沙面 世界 Y=-0.10
-        // 相对体积中心 0.5，沙面 -0.10 → 局部 -0.60
+        // 兵底平面 collider（仅在挖穿见底时兑底），降到沙层底部 世界 Y≈-0.24
+        // 真实沙面由 SDF mesh 的 MeshCollider 提供，铲子/放置射线打在真实沙形上
+        // 相对体积中心 0.5，底 -0.24 → 局部 -0.74
         var sdfFloor = new GameObject("SdfFloor");
         sdfFloor.transform.SetParent(sdfGo.transform, false);
-        sdfFloor.transform.localPosition = new Vector3(0f, -0.60f, 0f);
+        sdfFloor.transform.localPosition = new Vector3(0f, -0.74f, 0f);
         var box = sdfFloor.AddComponent<BoxCollider>();
         box.size = new Vector3(beachSize.x, 0.02f, beachSize.y);
 
