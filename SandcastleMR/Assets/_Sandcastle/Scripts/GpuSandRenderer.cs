@@ -27,7 +27,7 @@ namespace Sandcastle
         private int _resX, _resY, _resZ, _nx, _ny, _nz, _voxCount, _cubeCount;
 
         private ComputeBuffer _sdfBaseBuf, _erosionBuf, _wetnessBuf;
-        private ComputeBuffer _vertBuf, _indirectArgs;
+        private ComputeBuffer _vertBuf, _counterBuf;
         private ComputeBuffer _edgeTable, _triTable, _edgeVertexIndex, _vertexOffset;
         private int _kEvalBase, _kMC;
         private bool _dirty = true;
@@ -83,10 +83,9 @@ namespace Sandcastle
             _wetnessBuf.SetData(new float[_voxCount]);
 
             int cap = Mathf.CeilToInt(_cubeCount * vertCapacityFactor);
-            _vertBuf = new ComputeBuffer(cap, VERT_STRIDE, ComputeBufferType.Append);
-            _indirectArgs = new ComputeBuffer(1, 4 * sizeof(uint), ComputeBufferType.IndirectArguments);
-            // args: vertexCountPerInstance, instanceCount, startVertex, startInstance
-            _indirectArgs.SetData(new uint[] { 0, 1, 0, 0 });
+            _vertBuf = new ComputeBuffer(cap, VERT_STRIDE);  // 普通 structured buffer, 手动原子计数
+            _counterBuf = new ComputeBuffer(1, sizeof(uint));
+            _counterBuf.SetData(new uint[] { 0 });
 
             _kEvalBase = compute.FindKernel("EvaluateBase");
             _kMC = compute.FindKernel("MarchingCubes");
@@ -145,6 +144,7 @@ namespace Sandcastle
             compute.SetBuffer(_kMC, "_ErosionBuf", _erosionBuf);
             compute.SetBuffer(_kMC, "_WetnessBuf", _wetnessBuf);
             compute.SetBuffer(_kMC, "_VertBuf", _vertBuf);
+            compute.SetBuffer(_kMC, "_Counter", _counterBuf);
             compute.SetBuffer(_kMC, "_EdgeTable", _edgeTable);
             compute.SetBuffer(_kMC, "_TriTable", _triTable);
             compute.SetBuffer(_kMC, "_EdgeVertexIndex", _edgeVertexIndex);
@@ -171,22 +171,21 @@ namespace Sandcastle
 
             // MarchingCubes: 重置计数器后 dispatch over cube 网格
             compute.SetMatrix("_SandL2W", transform.localToWorldMatrix);
-            _vertBuf.SetCounterValue(0);
+            _counterBuf.SetData(new uint[] { 0 });
             compute.Dispatch(_kMC,
                 Mathf.CeilToInt(_resX / 4f), Mathf.CeilToInt(_resY / 4f), Mathf.CeilToInt(_resZ / 4f));
 
-            // 把 append 计数复制到 indirect args, 同时回读顶点数供 DrawProcedural 使用
-            ComputeBuffer.CopyCount(_vertBuf, _indirectArgs, 0);
-            uint[] cnt = new uint[4];
-            _indirectArgs.GetData(cnt);
+            // 从计数器读顶点数
+            uint[] cnt = new uint[1];
+            _counterBuf.GetData(cnt);
             _vertCount = (int)cnt[0];
 
             if (!_loggedOnce)
             {
                 _loggedOnce = true;
                 // 回读 indirect args 看实际顶点数
-                uint[] args = new uint[4];
-                _indirectArgs.GetData(args);
+                uint[] args = new uint[1];
+                _counterBuf.GetData(args);
                 int cap = _vertBuf.count;
                 // 统计上传的 SDF 场
                 int neg = 0; float mn = 9999f, mx = -9999f;
@@ -262,7 +261,7 @@ namespace Sandcastle
             _erosionBuf?.Release();
             _wetnessBuf?.Release();
             _vertBuf?.Release();
-            _indirectArgs?.Release();
+            _counterBuf?.Release();
             _edgeTable?.Release();
             _triTable?.Release();
             _edgeVertexIndex?.Release();

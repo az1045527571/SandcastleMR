@@ -25,7 +25,9 @@ StructuredBuffer<int> _EdgeVertexIndex;  // [12*2] 展平
 StructuredBuffer<int> _VertexOffset;     // [8*3] 展平
 
 // ---- 输出 ----
-AppendStructuredBuffer<Vert> _VertBuf;
+// 顶点输出: 手动原子计数, 保证三角形 3 顶点写入连续槽位
+RWStructuredBuffer<Vert> _VertBuf;
+RWStructuredBuffer<uint> _Counter;  // [0]=已写顶点数
 
 // ---- 参数 ----
 int _ResX, _ResY, _ResZ;          // cube 分辨率 (96,32,96)
@@ -186,12 +188,15 @@ void MarchingCubes(uint3 id : SV_DispatchThreadID)
         float3 n1 = normalize(mul((float3x3)_SandL2W, SdfGradient(edgeVert[i1])));
         float3 n2 = normalize(mul((float3x3)_SandL2W, SdfGradient(edgeVert[i2])));
 
+        // 原子预留 3 个连续槽位, 保证三角形不被并行拆散
+        uint baseIdx;
+        InterlockedAdd(_Counter[0], 3, baseIdx);
         // 绕序翻转 (与 CPU 版一致: 0,2,1)
         Vert va2; va2.pos = float4(p0, 0); va2.nw = float4(n0, wet);
         Vert vb2; vb2.pos = float4(p2, 0); vb2.nw = float4(n2, wet);
         Vert vc2; vc2.pos = float4(p1, 0); vc2.nw = float4(n1, wet);
-        _VertBuf.Append(va2);
-        _VertBuf.Append(vb2);
-        _VertBuf.Append(vc2);
+        _VertBuf[baseIdx]     = va2;
+        _VertBuf[baseIdx + 1] = vb2;
+        _VertBuf[baseIdx + 2] = vc2;
     }
 }
