@@ -156,6 +156,9 @@ Shader "Sandcastle/Sand"
                 float sparkle = spXZ * weights.y + spXY * weights.z + spYZ * weights.x;
                 albedo += sparkle * _SparkleStrength * (1.0 - wetness);
 
+                // 世界法线
+                float3 N = normalize(IN.normalWS);
+
                 // ===== 脚印（采样贴图，仅朝上沙面）=====
                 float upMask = saturate(N.y * 1.5 + 0.2); // N.y 越向上越明显（放宽门限避免误杀）
                 float footMask = 0.0; // 累计脚印遮罩，用于压暗 albedo
