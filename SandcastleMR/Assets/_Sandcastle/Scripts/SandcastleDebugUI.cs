@@ -13,16 +13,23 @@ public class SandcastleDebugUI : MonoBehaviour
     private SimpleWave _wave;
     private WaveSimulator _waveSim;
 
+    // 实时帧率（指数平滑）
+    private float _smoothDt;
+    private GpuSandRenderer _gpuSand;
+
     void Start()
     {
         _wave = FindObjectOfType<SimpleWave>();
         _waveSim = FindObjectOfType<WaveSimulator>();
+        _gpuSand = FindObjectOfType<GpuSandRenderer>();
         if (_waveSim != null) waterLevel = _waveSim.baseWaterLevel;
     }
 
     void Update()
     {
         if (Input.GetKeyDown(KeyCode.F1)) _show = !_show;
+        // 指数平滑帧时间
+        _smoothDt = Mathf.Lerp(_smoothDt, Time.unscaledDeltaTime, 0.1f);
     }
 
     void OnGUI()
@@ -30,6 +37,10 @@ public class SandcastleDebugUI : MonoBehaviour
         if (!_show) return;
 
         GUILayout.BeginArea(new Rect(10, 10, 420, 460), GUI.skin.box);
+        // 实时帧率
+        float fps = _smoothDt > 1e-5f ? 1f / _smoothDt : 0f;
+        string path = _gpuSand != null && _gpuSand.useGpu ? "GPU" : "CPU";
+        GUILayout.Label($"FPS: {fps:F1}  ({_smoothDt * 1000f:F1} ms)  沙子路径: {path}  [G切换]");
         GUILayout.Label("F1=隐藏   2=放置 B=球 V=浇水 X+左键=删");
 
         // ===== 坐标诊断 =====
