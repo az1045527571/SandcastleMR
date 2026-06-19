@@ -102,9 +102,9 @@ Shader "Sandcastle/SandGPU"
             {
                 Vert vtx = _VertBuf[id];
                 Varyings OUT;
-                // pos 是体积本地坐标(中心原点), 用传入矩阵变到世界
-                float3 posWS = mul(_SandL2W, float4(vtx.pos.xyz, 1.0)).xyz;
-                float3 nWS   = normalize(mul((float3x3)_SandL2W, vtx.nw.xyz));
+                // pos/nw 已是世界坐标(compute 端变换完毕), 直接用
+                float3 posWS = vtx.pos.xyz;
+                float3 nWS   = normalize(vtx.nw.xyz);
                 OUT.positionWS  = posWS;
                 OUT.positionHCS = TransformWorldToHClip(posWS);
                 OUT.normalWS    = nWS;

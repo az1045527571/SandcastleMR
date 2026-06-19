@@ -164,6 +164,7 @@ namespace Sandcastle
             }
 
             // MarchingCubes: 重置计数器后 dispatch over cube 网格
+            compute.SetMatrix("_SandL2W", transform.localToWorldMatrix);
             _vertBuf.SetCounterValue(0);
             compute.Dispatch(_kMC,
                 Mathf.CeilToInt(_resX / 4f), Mathf.CeilToInt(_resY / 4f), Mathf.CeilToInt(_resZ / 4f));
@@ -230,7 +231,6 @@ namespace Sandcastle
             if (_dirty) Rebuild();
 
             material.SetBuffer("_VertBuf", _vertBuf);
-            material.SetMatrix("_SandL2W", transform.localToWorldMatrix);
             Graphics.DrawProceduralIndirect(material, _bounds, MeshTopology.Triangles,
                 _indirectArgs, 0, null, null, UnityEngine.Rendering.ShadowCastingMode.On, true, gameObject.layer);
         }

@@ -33,6 +33,7 @@ float3 _Size;                      // 体积物理尺寸 (米)
 float _SandThickness;
 float _SandInset;
 float _IsoLevel;
+float4x4 _SandL2W;                 // 体积本地(中心原点)→世界, 在 compute 直接变换避免 shader 端矩阵问题
 
 int Nx() { return _ResX + 1; }
 int Ny() { return _ResY + 1; }
@@ -175,15 +176,15 @@ void MarchingCubes(uint3 id : SV_DispatchThreadID)
         int i1 = _TriTable[rowBase + t2 + 1];
         int i2 = _TriTable[rowBase + t2 + 2];
 
-        // 本地角落原点 -> mesh 本地中心原点 (与 CPU 版一致)
-        float3 p0 = edgeVert[i0] - sizeHalf;
-        float3 p1 = edgeVert[i1] - sizeHalf;
-        float3 p2 = edgeVert[i2] - sizeHalf;
+        // 本地中心原点 -> 世界 (compute 端直接变换)
+        float3 p0 = mul(_SandL2W, float4(edgeVert[i0] - sizeHalf, 1.0)).xyz;
+        float3 p1 = mul(_SandL2W, float4(edgeVert[i1] - sizeHalf, 1.0)).xyz;
+        float3 p2 = mul(_SandL2W, float4(edgeVert[i2] - sizeHalf, 1.0)).xyz;
 
-        // 法线 = SDF 梯度 (传入角落原点坐标)
-        float3 n0 = SdfGradient(edgeVert[i0]);
-        float3 n1 = SdfGradient(edgeVert[i1]);
-        float3 n2 = SdfGradient(edgeVert[i2]);
+        // 法线 = SDF 梯度 (本地), 变换到世界 (scale=1 时 3x3 即可)
+        float3 n0 = normalize(mul((float3x3)_SandL2W, SdfGradient(edgeVert[i0])));
+        float3 n1 = normalize(mul((float3x3)_SandL2W, SdfGradient(edgeVert[i1])));
+        float3 n2 = normalize(mul((float3x3)_SandL2W, SdfGradient(edgeVert[i2])));
 
         // 绕序翻转 (与 CPU 版一致: 0,2,1)
         Vert va2; va2.pos = float4(p0, 0); va2.nw = float4(n0, wet);
