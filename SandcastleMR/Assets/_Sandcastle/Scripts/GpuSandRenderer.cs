@@ -52,7 +52,8 @@ namespace Sandcastle
                 var sh = Shader.Find("Sandcastle/SandGPU_Debug");
                 if (sh == null) sh = Shader.Find("Sandcastle/SandGPU");
                 if (sh != null) material = new Material(sh);
-                Debug.Log($"[GpuSand] shader=\"{(sh!=null?sh.name:\"NULL\")}\" 找到compute={compute!=null}");
+                string shName = sh != null ? sh.name : "NULL";
+                Debug.Log($"[GpuSand] shader={shName} 找到compute={compute!=null}");
             }
             if (compute == null || material == null)
             {
