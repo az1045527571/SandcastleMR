@@ -566,6 +566,17 @@ namespace Sandcastle
                 z0 = Mathf.Clamp(r.z0, 0, Nz - 1); z1 = Mathf.Clamp(r.z1, 0, Nz - 1);
             }
 
+            // 预算每个 piece 的世界包围盒(加 smoothK 余量), 体素循环时剩枝:
+            // 只对包围盒含该体素的 piece 采样, 跳过远处 piece(尤其贵的 bakedmesh)。
+            int pn = _pieces.Count;
+            var pBounds = new Bounds[pn];
+            for (int i = 0; i < pn; i++)
+            {
+                Bounds b = _pieces[i].WorldBounds();
+                b.Expand(smoothK * 2f);   // SmoothMin 融合影响外扩
+                pBounds[i] = b;
+            }
+
             for (int z = z0; z <= z1; z++)
             {
                 for (int y = y0; y <= y1; y++)
@@ -578,9 +589,10 @@ namespace Sandcastle
                         // 基础沙层 box SDF
                         float d = SdfBoxLocal(localPos, boxCenter, boxHalf);
 
-                        // 叠加所有 piece（世界坐标采样）
-                        for (int i = 0; i < _pieces.Count; i++)
+                        // 叠加 piece（世界坐标采样）——包围盒剩枝
+                        for (int i = 0; i < pn; i++)
                         {
+                            if (!pBounds[i].Contains(worldPos)) continue;
                             float di = _pieces[i].SampleSdf(worldPos);
                             d = SmoothMin(d, di, smoothK);
                         }
