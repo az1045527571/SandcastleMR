@@ -68,10 +68,10 @@ public class SandcastleBootstrap : MonoBehaviour
         dbgGo.transform.SetParent(transform, false);
         dbgGo.AddComponent<SandcastleDebugUI>();
 
-        // 全局 SDF 沙箱系统：中心 Y=0.12 (体积 0.24 高 → 世界 Y 0~0.24, 沙层 0~0.08)
+        // 全局 SDF 沙箱系统：中心 Y=0.08 (体积 0.16 高 → 世界 Y 0~0.16, 沙层 0~0.08, 城堡余量 0.08~0.16)
         var sdfGo = new GameObject("SdfVolume");
         sdfGo.transform.SetParent(transform, false);
-        sdfGo.transform.localPosition = new Vector3(0f, 0.12f, 0f);
+        sdfGo.transform.localPosition = new Vector3(0f, 0.08f, 0f);
         sdfGo.AddComponent<MeshFilter>();
         var sdfMr = sdfGo.AddComponent<MeshRenderer>();
         Shader sdfSandShader = Shader.Find("Sandcastle/Sand");
@@ -80,14 +80,15 @@ public class SandcastleBootstrap : MonoBehaviour
         sdfMat.SetColor("_BaseColor", sandColor);
         sdfMr.sharedMaterial = sdfMat;
         var volume = sdfGo.AddComponent<SdfVolume>();
-        volume.size = new Vector3(beachSize.x, 0.24f, beachSize.y);
+        volume.size = new Vector3(beachSize.x, 0.16f, beachSize.y);
+        volume.resolutionY = 40; // 0.16m / 40 = 4mm/格，与 XZ 一致
         sdfGo.AddComponent<SdfVolumeBoundsVisualizer>();
 
         // 沙层顶面 collider（供放置射线命中），位于沙层表面 世界 Y≈0.08
-        // 相对体积中心 0.12，沙面 0.08 → 局部 -0.04
+        // 相对体积中心 0.08，沙面 0.08 → 局部 0.0
         var sdfFloor = new GameObject("SdfFloor");
         sdfFloor.transform.SetParent(sdfGo.transform, false);
-        sdfFloor.transform.localPosition = new Vector3(0f, -0.04f, 0f);
+        sdfFloor.transform.localPosition = new Vector3(0f, 0f, 0f);
         var box = sdfFloor.AddComponent<BoxCollider>();
         box.size = new Vector3(beachSize.x, 0.01f, beachSize.y);
 

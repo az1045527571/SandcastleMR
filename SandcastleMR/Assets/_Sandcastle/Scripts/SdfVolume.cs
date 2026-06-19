@@ -18,11 +18,11 @@ namespace Sandcastle
     public class SdfVolume : MonoBehaviour
     {
         [Header("体积")]
-        [Tooltip("沙箱物理尺寸（米）。默认 40×24×40cm")]
-        public Vector3 size = new Vector3(0.4f, 0.24f, 0.4f);
-        [Tooltip("各轴体素数。100×60×100 @ 0.4m = 4mm/格")]
+        [Tooltip("沙箱桌面尺寸（米）。默认 40×16×40cm")]
+        public Vector3 size = new Vector3(0.4f, 0.16f, 0.4f);
+        [Tooltip("各轴体素数。100×40×100 @ size = 4mm/格")]
         public int resolutionX = 100;
-        public int resolutionY = 60;
+        public int resolutionY = 40;
         public int resolutionZ = 100;
 
         [Header("初始沙层")]

@@ -9,7 +9,7 @@ public class SimpleWave : MonoBehaviour
 {
     [Header("尺寸")]
     [Tooltip("水面平面边长（米）。略大于沙箱让海水漫过边缘")]
-    public float size = 0.6f;
+    public float size = 0.44f;
 
     [Header("高度")]
     [Tooltip("静止水面世界 Y。由 WaveSimulator 每帧覆写")]

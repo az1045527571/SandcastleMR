@@ -24,7 +24,7 @@ public class OrbitCamera : MonoBehaviour
     public float zoomSpeed = 2f;
 
     private float _yaw = 45f;
-    private float _pitch = 30f;
+    private float _pitch = 50f;
 
     void LateUpdate()
     {
