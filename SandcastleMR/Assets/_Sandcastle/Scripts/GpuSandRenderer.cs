@@ -32,6 +32,7 @@ namespace Sandcastle
         private int _kEvalBase, _kMC;
         private bool _dirty = true;
         private bool _loggedOnce = false;
+        private int _vertCount = 0;
         private Bounds _bounds;
         private MeshRenderer _cpuRenderer;
 
@@ -169,8 +170,11 @@ namespace Sandcastle
             compute.Dispatch(_kMC,
                 Mathf.CeilToInt(_resX / 4f), Mathf.CeilToInt(_resY / 4f), Mathf.CeilToInt(_resZ / 4f));
 
-            // 把 append 计数复制到 indirect args 的 vertexCountPerInstance
+            // 把 append 计数复制到 indirect args, 同时回读顶点数供 DrawProcedural 使用
             ComputeBuffer.CopyCount(_vertBuf, _indirectArgs, 0);
+            uint[] cnt = new uint[4];
+            _indirectArgs.GetData(cnt);
+            _vertCount = (int)cnt[0];
 
             if (!_loggedOnce)
             {
@@ -230,9 +234,11 @@ namespace Sandcastle
 
             if (_dirty) Rebuild();
 
+            if (_vertCount <= 0) return;
             material.SetBuffer("_VertBuf", _vertBuf);
-            Graphics.DrawProceduralIndirect(material, _bounds, MeshTopology.Triangles,
-                _indirectArgs, 0, null, null, UnityEngine.Rendering.ShadowCastingMode.On, true, gameObject.layer);
+            // 用 DrawProcedural(非 indirect) + 回读的顶点数, 绕开 URP 下 DrawProceduralIndirect 不渲染的坑
+            Graphics.DrawProcedural(material, _bounds, MeshTopology.Triangles, _vertCount, 1,
+                null, null, UnityEngine.Rendering.ShadowCastingMode.On, true, gameObject.layer);
         }
 
         // 切换 GPU/CPU 路径：GPU 开时隐藏 CPU mesh renderer
