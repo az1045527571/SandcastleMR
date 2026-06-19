@@ -2,6 +2,14 @@ using UnityEngine;
 
 namespace Sandcastle
 {
+    // 与 compute 端 Vert 一一对应 (32 bytes: float4 pos + float4 nw)
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    struct Vert
+    {
+        public Vector4 pos;   // xyz=世界坐标, w=pad
+        public Vector4 nw;    // xyz=法线, w=湿度
+    }
+
     /// <summary>
     /// GPU 沙子渲染器（阶段一最小验证）。
     /// 数据上 GPU + EvaluateBase kernel + MarchingCubes kernel + DrawProceduralIndirect。
@@ -16,8 +24,8 @@ namespace Sandcastle
         public ComputeShader compute;
         [Tooltip("GPU 沙子材质 Sandcastle/SandGPU")]
         public Material material;
-        [Tooltip("按此键切换 GPU/CPU 路径显示（对照用）")]
-        public KeyCode toggleKey = KeyCode.G;
+        [Tooltip("按此键切换 GPU/CPU 路径显示（对照用）。G 留给样条模式，这里用 F2。")]
+        public KeyCode toggleKey = KeyCode.F2;
         [Tooltip("是否一开始就用 GPU 路径")]
         public bool useGpu = true;
         [Tooltip("顶点容量系数（cube 数 × 此值）")]
@@ -37,6 +45,12 @@ namespace Sandcastle
         private Bounds _bounds;
         private MeshRenderer _cpuRenderer;
 
+        // 方案 B: GPU 顶点回读重建 collider mesh，保证碰撞与 GPU 显示一致
+        public bool updateCollider = true;
+        private MeshCollider _meshCollider;
+        private Mesh _colliderMesh;
+        private bool _colliderDirty = true;  // 几何变了才重建 collider
+
         // Piece struct: float4x4(64) + float4(16) + float4(16) = 96 bytes
         private const int PIECE_STRIDE = 96;
         private const int MAX_SPLINE_PTS = 4096;
@@ -48,6 +62,11 @@ namespace Sandcastle
         {
             _vol = GetComponent<SdfVolume>();
             _cpuRenderer = GetComponent<MeshRenderer>();
+            _meshCollider = GetComponent<MeshCollider>();
+            if (_meshCollider == null) _meshCollider = gameObject.AddComponent<MeshCollider>();
+            _colliderMesh = new Mesh();
+            _colliderMesh.name = "GpuSandCollider";
+            _colliderMesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
 
             if (compute == null) compute = Resources.Load<ComputeShader>("SandMarchingCubes");
             if (material == null)
@@ -240,7 +259,49 @@ namespace Sandcastle
             _counterBuf.GetData(cnt);
             _vertCount = (int)cnt[0];
 
+            // 方案 B：回读 GPU 顶点重建 collider mesh，让碰撞跟 GPU 显示一致
+            if (updateCollider) RebuildCollider();
+
             _dirty = false;
+        }
+
+        // 回读 _vertBuf 前 _vertCount 个顶点，转回本地坐标建 collider mesh。
+        // GPU 顶点是世界坐标（_SandL2W 变换过），collider 在本 transform 下，须 worldToLocal 转回。
+        private Vert[] _readback;          // 复用避免每帧 GC
+        private Vector3[] _colVerts;
+        private int[] _colTris;
+        void RebuildCollider()
+        {
+            if (_meshCollider == null) return;
+            if (_vertCount <= 0 || _vertCount % 3 != 0)
+            {
+                _colliderMesh.Clear();
+                _meshCollider.sharedMesh = null;
+                return;
+            }
+
+            if (_readback == null || _readback.Length < _vertCount)
+            {
+                _readback = new Vert[Mathf.NextPowerOfTwo(_vertCount)];
+                _colVerts = new Vector3[_readback.Length];
+                _colTris = new int[_readback.Length];
+            }
+            // 同步回读（只在几何变动时跑，不是每帧）
+            _vertBuf.GetData(_readback, 0, 0, _vertCount);
+
+            Matrix4x4 w2l = transform.worldToLocalMatrix;
+            for (int i = 0; i < _vertCount; i++)
+            {
+                Vector4 wp = _readback[i].pos;   // 世界坐标
+                _colVerts[i] = w2l.MultiplyPoint3x4(new Vector3(wp.x, wp.y, wp.z));
+                _colTris[i] = i;
+            }
+
+            _colliderMesh.Clear();
+            _colliderMesh.SetVertices(_colVerts, 0, _vertCount);
+            _colliderMesh.SetTriangles(_colTris, 0, _vertCount, 0, false);
+            _meshCollider.sharedMesh = null;
+            _meshCollider.sharedMesh = _colliderMesh;
         }
 
         void Update()
@@ -266,6 +327,16 @@ namespace Sandcastle
         void ApplyRouting()
         {
             if (_cpuRenderer != null) _cpuRenderer.enabled = !useGpu;
+            if (useGpu)
+            {
+                // 切回 GPU：重建一次，恢复 GPU 顶点 + collider
+                _dirty = true;
+            }
+            else
+            {
+                // 切到 CPU：交还 collider 给 SdfVolume，强制它重算一次 CPU mesh
+                _vol.RebuildMesh();
+            }
         }
 
         /// <summary>外部标记需要重建（写操作后调用，阶段二接入）。</summary>
@@ -286,6 +357,7 @@ namespace Sandcastle
             _vertexOffset?.Release();
             _pieceBuf?.Release();
             _splinePtsBuf?.Release();
+            if (_colliderMesh != null) Destroy(_colliderMesh);
         }
     }
 }
