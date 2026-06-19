@@ -41,6 +41,14 @@ Shader "Sandcastle/Sand"
             float _GlobalWaterY;
             float _GlobalWetTransition;
 
+            // 脚印（最多 32 个）。每个: xy=世界XZ位置, z=朝向角(弧度), w=强度(0~1, 随时间淑出)
+            #define MAX_FOOTPRINTS 32
+            float4 _Footprints[MAX_FOOTPRINTS];
+            int _FootprintCount;
+            float _FootprintLength;  // 脚印长半轴（米）
+            float _FootprintWidth;   // 脚印宽半轴（米）
+            float _FootprintDepth;   // 法线扰动强度
+
             struct Attributes
             {
                 float4 positionOS : POSITION;
@@ -146,6 +154,35 @@ Shader "Sandcastle/Sand"
 
                 // Lambert 光照
                 float3 N = normalize(IN.normalWS);
+
+                // ===== 脚印法线扰动（仅朝上沙面）=====
+                float upMask = saturate(N.y * 2.0 - 0.5); // N.y 越向上越明显
+                if (upMask > 0.001 && _FootprintCount > 0)
+                {
+                    float2 wxz = IN.positionWS.xz;
+                    float2 acc = float2(0,0);
+                    [loop] for (int fi = 0; fi < MAX_FOOTPRINTS; fi++)
+                    {
+                        if (fi >= _FootprintCount) break;
+                        float4 fp = _Footprints[fi];
+                        float2 d = wxz - fp.xy;
+                        float ca = cos(-fp.z), sa = sin(-fp.z);
+                        float2 lp = float2(d.x * ca - d.y * sa, d.x * sa + d.y * ca); // 脚印本地
+                        float2 e = float2(lp.x / max(_FootprintLength, 1e-4), lp.y / max(_FootprintWidth, 1e-4));
+                        float rr = length(e);
+                        if (rr < 1.0)
+                        {
+                            // 径向梯度（本地）→ 旋回世界 XZ
+                            float2 gradL = float2(e.x / max(_FootprintLength,1e-4), e.y / max(_FootprintWidth,1e-4));
+                            float2 gradW = float2(gradL.x * ca + gradL.y * sa, -gradL.x * sa + gradL.y * ca);
+                            float w = fp.w * smoothstep(1.0, 0.0, rr); // 边缘淑出 + 强度
+                            acc += gradW * w;
+                        }
+                    }
+                    // 法线向坑内倾斜，产生凹陷的明暗
+                    N = normalize(N - float3(acc.x, 0, acc.y) * _FootprintDepth * upMask);
+                }
+
                 Light mainLight = GetMainLight();
                 float NdotL = saturate(dot(N, mainLight.direction));
                 float3 diffuse = albedo * mainLight.color.rgb * NdotL;

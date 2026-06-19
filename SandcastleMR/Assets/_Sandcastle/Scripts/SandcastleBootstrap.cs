@@ -106,6 +106,11 @@ public class SandcastleBootstrap : MonoBehaviour
         var splineGo = new GameObject("SplineWallPlacer");
         splineGo.transform.SetParent(transform, false);
         splineGo.AddComponent<SplineWallPlacer>();
+
+        // 脚印气氛效果（按住 F 沿鼠标移动留脚印）
+        var footGo = new GameObject("FootprintManager");
+        footGo.transform.SetParent(transform, false);
+        footGo.AddComponent<FootprintManager>();
     }
 
     void BuildWater()
