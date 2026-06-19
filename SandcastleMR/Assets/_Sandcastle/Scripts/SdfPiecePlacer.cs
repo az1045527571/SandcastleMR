@@ -72,7 +72,7 @@ public class SdfPiecePlacer : MonoBehaviour
         if (_cam == null || _volume == null) return;
         if (!enabled) return;
         // 样条绘制中让出鼠标，避免误放球
-        if (Sandcastle.SplineWallPlacer.IsDrawing)
+        if (Sandcastle.SplineWallPlacer.IsDrawing || Sandcastle.ShovelTool.ShovelActive)
         {
             if (_preview != null) _preview.SetActive(false);
             return;

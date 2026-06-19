@@ -33,8 +33,8 @@ namespace Sandcastle
         [Header("铲子模型")]
         [Tooltip("铲子 prefab（CHANZIGONGJU）。留空则运行时从 Resources 加载")]
         public GameObject shovelPrefab;
-        [Tooltip("铲斗中心子物体名（笔刷落点）。找不到则用模型原点")]
-        public string digPointName = "DigPoint";
+        [Tooltip("铲斗中心/鼠标对齐点子物体名（笔刷落点）。找不到则用模型原点")]
+        public string digPointName = "cutbox";
         [Tooltip("载沙假沙 mesh 子物体名（满铲时显示）")]
         public string loadedSandName = "CHANZI_SHAZI";
 
@@ -44,6 +44,9 @@ namespace Sandcastle
 
         public bool IsActive { get; private set; }
         public bool IsLoaded { get; private set; }
+
+        /// <summary>全局：铲子模式是否激活。其他放置器据此让出鼠标（与盖碍堡解耦）。</summary>
+        public static bool ShovelActive { get; private set; }
 
         private Camera _cam;
         private SdfVolume _volume;
@@ -82,18 +85,24 @@ namespace Sandcastle
 
             if (!IsActive || _cam == null || _volume == null) return;
 
-            // 铲子跟随鼠标在沙面悬停
+            // 铲子跟随鼠标：让 cutbox 对准鼠标命中的沙面点
             Ray ray = _cam.ScreenPointToRay(Input.mousePosition);
             bool hit = Physics.Raycast(ray, out RaycastHit rh, 100f);
             if (hit && _shovel != null)
             {
                 _shovel.SetActive(true);
-                _shovel.transform.position = rh.point;
-                // 朝向：让铲子大致面向相机，简单可用；以后可换成手势/朝向逻辑
+                // 朝向：面向相机（水平）
                 Vector3 toCam = _cam.transform.position - rh.point;
                 toCam.y = 0;
                 if (toCam.sqrMagnitude > 1e-4f)
                     _shovel.transform.rotation = Quaternion.LookRotation(toCam.normalized, Vector3.up);
+                // 先放到命中点，再根据 cutbox 世界偏移修正，使 cutbox 落在命中点
+                _shovel.transform.position = rh.point;
+                if (_digPoint != null)
+                {
+                    Vector3 offset = _digPoint.position - _shovel.transform.position;
+                    _shovel.transform.position = rh.point - offset;
+                }
             }
             else if (_shovel != null)
             {
@@ -102,6 +111,7 @@ namespace Sandcastle
 
             if (hit && Input.GetMouseButtonDown(0))
             {
+                // 笔刷中心 = cutbox 世界位置（没有则用命中点）
                 Vector3 center = (_digPoint != null) ? _digPoint.position : rh.point;
                 float rotY = _shovel != null ? _shovel.transform.eulerAngles.y : 0f;
                 if (!IsLoaded)
@@ -132,6 +142,7 @@ namespace Sandcastle
         void SetActive(bool on)
         {
             IsActive = on;
+            ShovelActive = on;
             if (_shovel != null) _shovel.SetActive(on);
         }
 
