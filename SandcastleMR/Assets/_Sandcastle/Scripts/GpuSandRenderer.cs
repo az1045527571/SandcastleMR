@@ -146,9 +146,19 @@ namespace Sandcastle
 
         void Rebuild()
         {
-            // EvaluateBase: dispatch over 顶点网格 Nx*Ny*Nz
-            compute.Dispatch(_kEvalBase,
-                Mathf.CeilToInt(_nx / 4f), Mathf.CeilToInt(_ny / 4f), Mathf.CeilToInt(_nz / 4f));
+            // 阶段一诊断: 直接上传 CPU 已验证的 SDF 场 (绕过 GPU EvaluateBase)
+            // CPU _sdf = _sdfBase + _erosion, 已是最终场; erosion 置 0 避免重复叠加
+            float[] cpuSdf = _vol.GetSdfData();
+            if (cpuSdf != null && cpuSdf.Length == _voxCount)
+            {
+                _sdfBaseBuf.SetData(cpuSdf);
+            }
+            else
+            {
+                // 回退: GPU 算 base
+                compute.Dispatch(_kEvalBase,
+                    Mathf.CeilToInt(_nx / 4f), Mathf.CeilToInt(_ny / 4f), Mathf.CeilToInt(_nz / 4f));
+            }
 
             // MarchingCubes: 重置计数器后 dispatch over cube 网格
             _vertBuf.SetCounterValue(0);
