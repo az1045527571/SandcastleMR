@@ -8,17 +8,17 @@ using UnityEngine;
 public class SimpleWave : MonoBehaviour
 {
     [Header("尺寸")]
-    [Tooltip("水面平面边长（米）。略大于沙箱让海水漫过边缘")]
-    public float size = 0.44f;
+    [Tooltip("水面平面边长（米）。还原原始 25m")]
+    public float size = 25f;
 
     [Header("高度")]
-    [Tooltip("静止水面世界 Y。由 WaveSimulator 每帧覆写")]
-    public float restWorldY = 0.04f;
+    [Tooltip("静止水面世界 Y。沙面 -0.10 上方 0.02 = -0.08。由 WaveSimulator 每帧覆写")]
+    public float restWorldY = -0.08f;
 
     [Header("波浪")]
-    public float waveHeight = 0.004f;
+    public float waveHeight = 0.02f;
     public float waveSpeed = 0.8f;
-    public float waveFreq = 12f;
+    public float waveFreq = 1.5f;
 
     [Header("颜色")]
     public Color shallowColor = new Color(0.2f, 0.75f, 0.8f, 0.5f);

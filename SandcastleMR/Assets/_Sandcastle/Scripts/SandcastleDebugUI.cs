@@ -7,7 +7,7 @@ using Sandcastle;
 /// </summary>
 public class SandcastleDebugUI : MonoBehaviour
 {
-    public float waterLevel = 0.04f;  // 静止水面世界 Y
+    public float waterLevel = -0.08f;  // 静止水面世界 Y
 
     private bool _show = true;
     private SimpleWave _wave;
@@ -33,7 +33,7 @@ public class SandcastleDebugUI : MonoBehaviour
         GUILayout.Label("F1=隐藏   2=放置 B=球 V=浇水 X+左键=删");
 
         GUILayout.Label($"水位 Water Level: {waterLevel:F3} m");
-        float wh = GUILayout.HorizontalSlider(waterLevel, 0f, 0.16f);
+        float wh = GUILayout.HorizontalSlider(waterLevel, -0.20f, 0.30f);
         if (!Mathf.Approximately(wh, waterLevel))
         {
             waterLevel = wh;
@@ -43,10 +43,10 @@ public class SandcastleDebugUI : MonoBehaviour
         if (_waveSim != null)
         {
             GUILayout.Label($"涨潮幅度 Amplitude: {_waveSim.waveAmplitude:F3} m");
-            _waveSim.waveAmplitude = GUILayout.HorizontalSlider(_waveSim.waveAmplitude, 0f, 0.12f);
+            _waveSim.waveAmplitude = GUILayout.HorizontalSlider(_waveSim.waveAmplitude, 0f, 0.20f);
 
             GUILayout.Label($"侵蚀速度 Erode/s: {_waveSim.erodePerSecond:F4} m");
-            _waveSim.erodePerSecond = GUILayout.HorizontalSlider(_waveSim.erodePerSecond, 0f, 0.02f);
+            _waveSim.erodePerSecond = GUILayout.HorizontalSlider(_waveSim.erodePerSecond, 0f, 0.08f);
 
             GUILayout.Label($"潮汐周期 Period: {_waveSim.wavePeriod:F1} s");
             _waveSim.wavePeriod = GUILayout.HorizontalSlider(_waveSim.wavePeriod, 1f, 12f);

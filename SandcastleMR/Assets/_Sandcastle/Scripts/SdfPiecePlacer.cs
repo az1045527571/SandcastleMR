@@ -18,9 +18,9 @@ using Sandcastle;
 public class SdfPiecePlacer : MonoBehaviour
 {
     [Header("Sphere 模式参数")]
-    public float defaultRadius = 0.025f;
-    public float minRadius = 0.005f;
-    public float maxRadius = 0.08f;
+    public float defaultRadius = 0.5f;
+    public float minRadius = 0.05f;
+    public float maxRadius = 2f;
 
     [Header("BakedMesh 模式参数")]
     public MeshSdfAsset[] bakedSdfList;
@@ -34,7 +34,7 @@ public class SdfPiecePlacer : MonoBehaviour
 
     [Header("浇水 (按住 V)")]
     [Tooltip("浇水半径（米）")]
-    public float wetRadius = 0.04f;
+    public float wetRadius = 0.4f;
     [Tooltip("每秒增加湿度")]
     public float wetPerSecond = 1.5f;
 
@@ -100,14 +100,14 @@ public class SdfPiecePlacer : MonoBehaviour
         if (Input.GetKey(KeyCode.Equals) || Input.GetKey(KeyCode.KeypadPlus))
         {
             if (_mode == Mode.Sphere)
-                _currentRadius = Mathf.Min(_currentRadius + 0.03f * Time.deltaTime, maxRadius);
+                _currentRadius = Mathf.Min(_currentRadius + 0.5f * Time.deltaTime, maxRadius);
             else
                 _currentBakedScale = Mathf.Min(_currentBakedScale + 1f * Time.deltaTime, maxBakedScale);
         }
         if (Input.GetKey(KeyCode.Minus) || Input.GetKey(KeyCode.KeypadMinus))
         {
             if (_mode == Mode.Sphere)
-                _currentRadius = Mathf.Max(_currentRadius - 0.03f * Time.deltaTime, minRadius);
+                _currentRadius = Mathf.Max(_currentRadius - 0.5f * Time.deltaTime, minRadius);
             else
                 _currentBakedScale = Mathf.Max(_currentBakedScale - 1f * Time.deltaTime, minBakedScale);
         }
@@ -159,7 +159,7 @@ public class SdfPiecePlacer : MonoBehaviour
             Vector3 vSize = _volume.size;
             Vector3 vMin = vCenter - vSize * 0.5f;
             Vector3 vMax = vCenter + vSize * 0.5f;
-            float r = (_mode == Mode.Sphere) ? _currentRadius : 0.03f;
+            float r = (_mode == Mode.Sphere) ? _currentRadius : 0.3f;
             pos.x = Mathf.Clamp(pos.x, vMin.x + r, vMax.x - r);
             pos.z = Mathf.Clamp(pos.z, vMin.z + r, vMax.z - r);
         }
@@ -197,7 +197,7 @@ public class SdfPiecePlacer : MonoBehaviour
                 nearest = p;
             }
         }
-        if (nearest != null && minDist < 0.05f)
+        if (nearest != null && minDist < 0.5f)
             Destroy(nearest.gameObject);
     }
 

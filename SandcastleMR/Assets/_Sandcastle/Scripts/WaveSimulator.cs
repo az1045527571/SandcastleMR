@@ -13,10 +13,10 @@ namespace Sandcastle
     public class WaveSimulator : MonoBehaviour
     {
         [Header("水位")]
-        [Tooltip("基础水位（世界 Y）。沙层表面在 0.08，水位默认略低于沙面")]
-        public float baseWaterLevel = 0.04f;
+        [Tooltip("基础水位（世界 Y）。还原原始 -0.08")]
+        public float baseWaterLevel = -0.08f;
         [Tooltip("涨潮峰值水位（高于基础水位多少米）")]
-        public float waveAmplitude = 0.05f;
+        public float waveAmplitude = 0.06f;
 
         [Header("周期")]
         [Tooltip("涨潮周期（秒）")]
@@ -27,9 +27,9 @@ namespace Sandcastle
 
         [Header("侵蚀")]
         [Tooltip("浪头每秒侵蚀量（米）。SDF值往正方向加，表面后退")]
-        public float erodePerSecond = 0.004f;
+        public float erodePerSecond = 0.02f;
         [Tooltip("侵蚀作用范围: 离水位多少米内的体素受侵蚀")]
-        public float erodeBandHeight = 0.05f;
+        public float erodeBandHeight = 1.0f;
         [Tooltip("侵蚀过程中多久重建一次 mesh（秒）。越小衰减越连贯但越卡")]
         public float rebuildInterval = 0.25f;
 
@@ -64,7 +64,7 @@ namespace Sandcastle
             yield return null;
             _currentLevel = baseWaterLevel;
             Shader.SetGlobalFloat("_GlobalWaterY", baseWaterLevel);
-            Shader.SetGlobalFloat("_GlobalWetTransition", 0.02f);
+            Shader.SetGlobalFloat("_GlobalWetTransition", 0.05f);
             Debug.Log($"[Wave] 初始化: baseWaterLevel = {baseWaterLevel:F3}");
         }
 
@@ -86,7 +86,7 @@ namespace Sandcastle
             // 全局水位传给所有 Sand shader（顶点低Y会自动显示为湿沙）
             // 用当前真实水位，这样静止时湿沙线锁在静止水面，不会被峰值抬高
             Shader.SetGlobalFloat("_GlobalWaterY", _currentLevel);
-            Shader.SetGlobalFloat("_GlobalWetTransition", 0.02f);
+            Shader.SetGlobalFloat("_GlobalWetTransition", 0.05f);
 
             // 同步水面视觉
             if (simpleWave != null)
