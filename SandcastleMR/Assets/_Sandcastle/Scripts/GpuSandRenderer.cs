@@ -87,6 +87,10 @@ namespace Sandcastle
             _counterBuf = new ComputeBuffer(1, sizeof(uint));
             _counterBuf.SetData(new uint[] { 0 });
 
+            // Piece / spline buffer：必须在 SetComputeParams 绑定前分配，否则 SetBuffer(null) 抛 ArgumentNullException
+            _pieceBuf = new ComputeBuffer(64, PIECE_STRIDE);                 // 最多 64 个 piece
+            _splinePtsBuf = new ComputeBuffer(MAX_SPLINE_PTS, sizeof(float) * 2); // Vector2 控制点
+
             _kEvalBase = compute.FindKernel("EvaluateBase");
             _kMC = compute.FindKernel("MarchingCubes");
 
