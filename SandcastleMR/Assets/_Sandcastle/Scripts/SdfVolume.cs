@@ -21,9 +21,9 @@ namespace Sandcastle
         [Tooltip("体积尺寸（米）。还原换方案前 5×1.5×5")]
         public Vector3 size = new Vector3(5f, 1.5f, 5f);
         [Tooltip("各轴体素数。还原 96×32×96")]
-        public int resolutionX = 96;
-        public int resolutionY = 32;
-        public int resolutionZ = 96;
+        public int resolutionX = 121;
+        public int resolutionY = 40;
+        public int resolutionZ = 121;
 
         [Header("初始沙层")]
         [Tooltip("初始实心沙层厚度（米）。从体积底部算起。体积底世界-0.25, 沙面-0.10 → 0.15m")]
