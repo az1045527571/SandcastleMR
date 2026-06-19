@@ -47,6 +47,10 @@ namespace Sandcastle
         public float swingAngle = -55f;
         [Tooltip("挬动单程时长（秒）")]
         public float swingDuration = 0.28f;
+        [Tooltip("俱冲向下深度（米）")]
+        public float plungeDown = 0.12f;
+        [Tooltip("俱冲向前距离（米，沿铲子朝向）")]
+        public float plungeForward = 0.1f;
 
         [Header("事件（接音效/粒子）")]
         public UnityEvent OnDig;   // 挖的瞬间
@@ -109,11 +113,17 @@ namespace Sandcastle
             {
                 _swingT += Time.deltaTime;
                 float u = Mathf.Clamp01(_swingT / Mathf.Max(swingDuration, 1e-3f));
-                float swingZ = Mathf.Sin(u * Mathf.PI) * swingAngle; // 0→峰值→0
+                float arc = Mathf.Sin(u * Mathf.PI); // 0→峰值→0
+                float swingZ = arc * swingAngle;
                 if (_shovel != null)
                 {
                     _shovel.transform.rotation = _swingFaceRot * Quaternion.Euler(baseEuler.x, baseEuler.y, baseEuler.z + swingZ);
-                    _shovel.transform.position = _swingPos;
+                    // 位置弧线：沿铲子朝向向前 + 向下俱冲再抬起
+                    Vector3 fwd = _swingFaceRot * Vector3.forward;
+                    fwd.y = 0f;
+                    if (fwd.sqrMagnitude > 1e-6f) fwd.Normalize();
+                    Vector3 plunge = fwd * (plungeForward * arc) + Vector3.down * (plungeDown * arc);
+                    _shovel.transform.position = _swingPos + plunge;
                 }
                 if (u >= 1f) _swinging = false;
                 return;
