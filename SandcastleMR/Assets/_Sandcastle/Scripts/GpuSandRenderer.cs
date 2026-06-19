@@ -34,8 +34,8 @@ namespace Sandcastle
         private Bounds _bounds;
         private MeshRenderer _cpuRenderer;
 
-        // Vert: float3 pos + float3 normal + float wet = 7 floats = 28 bytes
-        private const int VERT_STRIDE = 28;
+        // Vert: float4 pos + float4 nw = 8 floats = 32 bytes (全 float4 对齐避免 padding 坑)
+        private const int VERT_STRIDE = 32;
 
         void Start()
         {

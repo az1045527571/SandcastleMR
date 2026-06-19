@@ -6,12 +6,11 @@
 #pragma kernel EvaluateBase
 #pragma kernel MarchingCubes
 
-// ---- 顶点结构 (必须和 C# / shader 内存布局一致: float3+float3+float = 7 floats = 28B) ----
+// ---- 顶点结构 (全 float4 对齐, 避免 float3 在 structured buffer 的 padding 坑: 8 floats = 32B) ----
 struct Vert
 {
-    float3 pos;     // 体积本地坐标 (中心原点, 米)
-    float3 normal;
-    float  wet;
+    float4 pos;     // xyz=体积本地坐标(中心原点,米), w=pad
+    float4 nw;      // xyz=法线, w=湿度
 };
 
 // ---- 体素场 ----
@@ -187,9 +186,9 @@ void MarchingCubes(uint3 id : SV_DispatchThreadID)
         float3 n2 = SdfGradient(edgeVert[i2]);
 
         // 绕序翻转 (与 CPU 版一致: 0,2,1)
-        Vert va2; va2.pos = p0; va2.normal = n0; va2.wet = wet;
-        Vert vb2; vb2.pos = p2; vb2.normal = n2; vb2.wet = wet;
-        Vert vc2; vc2.pos = p1; vc2.normal = n1; vc2.wet = wet;
+        Vert va2; va2.pos = float4(p0, 0); va2.nw = float4(n0, wet);
+        Vert vb2; vb2.pos = float4(p2, 0); vb2.nw = float4(n2, wet);
+        Vert vc2; vc2.pos = float4(p1, 0); vc2.nw = float4(n1, wet);
         _VertBuf.Append(va2);
         _VertBuf.Append(vb2);
         _VertBuf.Append(vc2);

@@ -47,12 +47,11 @@ Shader "Sandcastle/SandGPU"
 
             #include "SandDecals.hlsl"
 
-            // 顶点 buffer (与 compute 的 struct Vert 对齐)
+            // 顶点 buffer (与 compute 的 struct Vert 对齐: float4 pos + float4 nw)
             struct Vert
             {
-                float3 pos;
-                float3 normal;
-                float  wet;
+                float4 pos;
+                float4 nw;  // xyz=normal, w=wet
             };
             StructuredBuffer<Vert> _VertBuf;
             // SdfVolume 的本地→世界矩阵 (procedural draw 不自动设 unity_ObjectToWorld)
@@ -104,13 +103,13 @@ Shader "Sandcastle/SandGPU"
                 Vert vtx = _VertBuf[id];
                 Varyings OUT;
                 // pos 是体积本地坐标(中心原点), 用传入矩阵变到世界
-                float3 posWS = mul(_SandL2W, float4(vtx.pos, 1.0)).xyz;
-                float3 nWS   = normalize(mul((float3x3)_SandL2W, vtx.normal));
+                float3 posWS = mul(_SandL2W, float4(vtx.pos.xyz, 1.0)).xyz;
+                float3 nWS   = normalize(mul((float3x3)_SandL2W, vtx.nw.xyz));
                 OUT.positionWS  = posWS;
                 OUT.positionHCS = TransformWorldToHClip(posWS);
                 OUT.normalWS    = nWS;
                 OUT.fogCoord    = ComputeFogFactor(OUT.positionHCS.z);
-                OUT.wetness     = vtx.wet;
+                OUT.wetness     = vtx.nw.w;
                 return OUT;
             }
 
