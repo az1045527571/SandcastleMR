@@ -168,8 +168,6 @@ namespace Sandcastle
                 (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 +
                 (-p0 + 3f * p1 - 3f * p2 + p3) * t3);
         }
-                _previewLine.SetPosition(i, _points[i] + Vector3.up * 0.01f);
-        }
 
         void FinishDrawing()
         {
