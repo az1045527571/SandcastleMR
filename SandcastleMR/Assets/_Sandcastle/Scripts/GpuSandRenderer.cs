@@ -194,6 +194,24 @@ namespace Sandcastle
                     + $"SDF场: 负值(实心)={neg} min={mn:F3} max={mx:F3}\n"
                     + $"顶点buffer容量={cap} 实际append顶点数={args[0]} instanceCount={args[1]}\n"
                     + $"VERT_STRIDE={VERT_STRIDE} size={_vol.size} 分辨率={_resX}x{_resY}x{_resZ}");
+
+                // 回读前 6 个顶点的实际坐标 (本地中心原点), 看是否在 ±size/2 范围内
+                int n = (int)args[0];
+                if (n > 0)
+                {
+                    int sample = Mathf.Min(n, 6);
+                    var verts = new Vector4[sample * 2]; // 每顶点 2 个 float4 (pos, nw)
+                    _vertBuf.GetData(verts, 0, 0, sample * 2);
+                    var sb = new System.Text.StringBuilder("[GpuSand] 前6顶点(本地坐标,应在±"
+                        + (_vol.size * 0.5f) + "):\n");
+                    for (int i = 0; i < sample; i++)
+                    {
+                        Vector4 p = verts[i * 2];
+                        Vector4 nw = verts[i * 2 + 1];
+                        sb.AppendLine($"  v{i} pos=({p.x:F2},{p.y:F2},{p.z:F2}) n=({nw.x:F2},{nw.y:F2},{nw.z:F2}) wet={nw.w:F2}");
+                    }
+                    Debug.Log(sb.ToString());
+                }
             }
 
             _dirty = false;
