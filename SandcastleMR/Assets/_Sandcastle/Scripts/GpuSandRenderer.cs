@@ -48,7 +48,6 @@ namespace Sandcastle
         public bool updateCollider = true;
         private MeshCollider _meshCollider;
         private Mesh _colliderMesh;
-        private bool _colliderDirty = true;  // 几何变了才重建 collider
 
         // Vert: float4 pos + float4 nw = 8 floats = 32 bytes (全 float4 对齐避免 padding 坑)
         private const int VERT_STRIDE = 32;
