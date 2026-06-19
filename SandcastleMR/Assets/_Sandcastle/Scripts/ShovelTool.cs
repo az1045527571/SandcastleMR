@@ -43,8 +43,8 @@ namespace Sandcastle
         public Vector3 baseEuler = new Vector3(45f, 180f, 0f);
 
         [Header("铲动动画")]
-        [Tooltip("铲/招时绕 Z 挬动的峰值角度")]
-        public float swingAngle = 55f;
+        [Tooltip("铲/招时绕 Z 挬动的峰值角度（正负决定挬动方向）")]
+        public float swingAngle = -55f;
         [Tooltip("挬动单程时长（秒）")]
         public float swingDuration = 0.28f;
 
