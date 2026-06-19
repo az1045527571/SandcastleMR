@@ -38,6 +38,16 @@ namespace Sandcastle
         [Tooltip("载沙假沙 mesh 子物体名（满铲时显示）")]
         public string loadedSandName = "CHANZI_SHAZI";
 
+        [Header("姿态")]
+        [Tooltip("铲子基础姿态欧拉角（在面向相机的基础上叠加）。x=倾斜, y=纵向翻转, z=滚转")]
+        public Vector3 baseEuler = new Vector3(45f, 180f, 0f);
+
+        [Header("铲动动画")]
+        [Tooltip("铲/招时绕 Z 挬动的峰值角度")]
+        public float swingAngle = 55f;
+        [Tooltip("挬动单程时长（秒）")]
+        public float swingDuration = 0.28f;
+
         [Header("事件（接音效/粒子）")]
         public UnityEvent OnDig;   // 挖的瞬间
         public UnityEvent OnDrop;  // 倒的瞬间
@@ -49,6 +59,12 @@ namespace Sandcastle
         public static bool ShovelActive { get; private set; }
 
         private Camera _cam;
+
+        // 挬动动画状态
+        private bool _swinging;
+        private float _swingT;
+        private Quaternion _swingFaceRot;   // 挬动期间锁定的面向机朝向
+        private Vector3 _swingPos;          // 挬动期间锁定的位置
         private SdfVolume _volume;
         private GameObject _shovel;
         private Transform _digPoint;
@@ -85,18 +101,34 @@ namespace Sandcastle
 
             if (!IsActive || _cam == null || _volume == null) return;
 
-            // 铲子跟随鼠标：让 cutbox 对准鼠标命中的沙面点
             Ray ray = _cam.ScreenPointToRay(Input.mousePosition);
             bool hit = Physics.Raycast(ray, out RaycastHit rh, 100f);
+
+            // 挬动动画期间：锁定位置/面向，只叠加绕 Z 的挬动，不响应跟随
+            if (_swinging)
+            {
+                _swingT += Time.deltaTime;
+                float u = Mathf.Clamp01(_swingT / Mathf.Max(swingDuration, 1e-3f));
+                float swingZ = Mathf.Sin(u * Mathf.PI) * swingAngle; // 0→峰值→0
+                if (_shovel != null)
+                {
+                    _shovel.transform.rotation = _swingFaceRot * Quaternion.Euler(baseEuler.x, baseEuler.y, baseEuler.z + swingZ);
+                    _shovel.transform.position = _swingPos;
+                }
+                if (u >= 1f) _swinging = false;
+                return;
+            }
+
+            // 铲子跟随鼠标：面向相机 + 基础姿态，让 cutbox 对准命中点
             if (hit && _shovel != null)
             {
                 _shovel.SetActive(true);
-                // 朝向：面向相机（水平）
                 Vector3 toCam = _cam.transform.position - rh.point;
                 toCam.y = 0;
-                if (toCam.sqrMagnitude > 1e-4f)
-                    _shovel.transform.rotation = Quaternion.LookRotation(toCam.normalized, Vector3.up);
-                // 先放到命中点，再根据 cutbox 世界偏移修正，使 cutbox 落在命中点
+                Quaternion faceRot = (toCam.sqrMagnitude > 1e-4f)
+                    ? Quaternion.LookRotation(toCam.normalized, Vector3.up)
+                    : Quaternion.identity;
+                _shovel.transform.rotation = faceRot * Quaternion.Euler(baseEuler);
                 _shovel.transform.position = rh.point;
                 if (_digPoint != null)
                 {
@@ -119,10 +151,20 @@ namespace Sandcastle
 
             if (Input.GetMouseButtonUp(0) && IsLoaded)
             {
-                // 松开时在当前铲斗位置倒（未命中沙面则用上一帧铲斗位置）
                 Vector3 dropCenter = (_digPoint != null) ? _digPoint.position : center;
                 Drop(dropCenter, rotY);
             }
+        }
+
+        /// <summary>触发一次绕 Z 的铲动挬动动画（锁定当前位置/面向）。</summary>
+        void StartSwing()
+        {
+            if (_shovel == null) return;
+            _swinging = true;
+            _swingT = 0f;
+            _swingPos = _shovel.transform.position;
+            // 从当前总朝向反推出面向机部分（去掉 baseEuler），供挬动期间叠加
+            _swingFaceRot = _shovel.transform.rotation * Quaternion.Inverse(Quaternion.Euler(baseEuler));
         }
 
         void Dig(Vector3 center, float rotationY)
@@ -131,6 +173,7 @@ namespace Sandcastle
             _volume.RebuildMesh();
             IsLoaded = true;
             UpdateLoadedVisual();
+            StartSwing();
             OnDig?.Invoke();
         }
 
@@ -140,6 +183,7 @@ namespace Sandcastle
             _volume.RebuildMesh();
             IsLoaded = false;
             UpdateLoadedVisual();
+            StartSwing();
             OnDrop?.Invoke();
         }
 
