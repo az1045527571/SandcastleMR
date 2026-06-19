@@ -101,6 +101,11 @@ public class SandcastleBootstrap : MonoBehaviour
         var sdfPlacerGo = new GameObject("SdfPiecePlacer");
         sdfPlacerGo.transform.SetParent(transform, false);
         sdfPlacerGo.AddComponent<SdfPiecePlacer>();
+
+        // 样条沙堤放置器（按 G 绘制）
+        var splineGo = new GameObject("SplineWallPlacer");
+        splineGo.transform.SetParent(transform, false);
+        splineGo.AddComponent<SplineWallPlacer>();
     }
 
     void BuildWater()

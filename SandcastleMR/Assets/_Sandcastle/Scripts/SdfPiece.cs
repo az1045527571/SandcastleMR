@@ -8,11 +8,21 @@ namespace Sandcastle
     /// </summary>
     public class SdfPiece : MonoBehaviour
     {
-        public enum ShapeType { Sphere, Capsule, Box, BakedMesh }
+        public enum ShapeType { Sphere, Capsule, Box, BakedMesh, Spline }
 
         [Header("形状")]
         public ShapeType shape = ShapeType.Sphere;
         public float radius = 0.5f;
+
+        [Header("Spline 沙堤参数")]
+        [Tooltip("沿折线筑堤。控制点世界坐标")]
+        public System.Collections.Generic.List<Vector3> splinePoints = new System.Collections.Generic.List<Vector3>();
+        [Tooltip("堤半宽（米）")]
+        public float splineRadius = 0.3f;
+        [Tooltip("堤顶世界 Y（固定高度）。低于此高度的部分被填为实心")]
+        public float splineTopY = 0f;
+        [Tooltip("堤底世界 Y。从堤底到堤顶为实心沙")]
+        public float splineBottomY = -0.5f;
 
         [Header("Baked Mesh SDF")]
         public MeshSdfAsset bakedSdf;
@@ -56,6 +66,8 @@ namespace Sandcastle
                     return SdfBox(worldPos);
                 case ShapeType.BakedMesh:
                     return SdfBaked(worldPos);
+                case ShapeType.Spline:
+                    return SdfSpline(worldPos);
                 default:
                     return SdfSphere(worldPos);
             }
@@ -88,6 +100,56 @@ namespace Sandcastle
             // SDF 值要乘回世界缩放（本地距离 → 世界距离）
             d *= transform.lossyScale.x;
             return d;
+        }
+
+        /// <summary>
+        /// 沿折线的固定高度沙堤。
+        /// 水平：到折线（XZ 投影）的距离 - splineRadius；
+        /// 垂直：限制在 splineBottomY ~ splineTopY；两者交集。
+        /// </summary>
+        float SdfSpline(Vector3 p)
+        {
+            if (splinePoints == null || splinePoints.Count == 0)
+                return float.PositiveInfinity;
+
+            Vector2 pxz = new Vector2(p.x, p.z);
+            float distXZ;
+            if (splinePoints.Count == 1)
+            {
+                Vector2 a = new Vector2(splinePoints[0].x, splinePoints[0].z);
+                distXZ = Vector2.Distance(pxz, a);
+            }
+            else
+            {
+                distXZ = float.PositiveInfinity;
+                for (int i = 0; i < splinePoints.Count - 1; i++)
+                {
+                    Vector2 a = new Vector2(splinePoints[i].x, splinePoints[i].z);
+                    Vector2 b = new Vector2(splinePoints[i + 1].x, splinePoints[i + 1].z);
+                    distXZ = Mathf.Min(distXZ, DistToSegment(pxz, a, b));
+                }
+            }
+            float horiz = distXZ - splineRadius;
+
+            float cy = (splineTopY + splineBottomY) * 0.5f;
+            float halfY = (splineTopY - splineBottomY) * 0.5f;
+            float vert = Mathf.Abs(p.y - cy) - halfY;
+
+            float qx = Mathf.Max(horiz, 0f);
+            float qy = Mathf.Max(vert, 0f);
+            float outside = Mathf.Sqrt(qx * qx + qy * qy);
+            float inside = Mathf.Min(Mathf.Max(horiz, vert), 0f);
+            return outside + inside;
+        }
+
+        /// <summary>2D 点到线段距离。</summary>
+        static float DistToSegment(Vector2 p, Vector2 a, Vector2 b)
+        {
+            Vector2 ab = b - a;
+            float t = Vector2.Dot(p - a, ab) / Mathf.Max(Vector2.Dot(ab, ab), 1e-8f);
+            t = Mathf.Clamp01(t);
+            Vector2 proj = a + t * ab;
+            return Vector2.Distance(p, proj);
         }
     }
 }
