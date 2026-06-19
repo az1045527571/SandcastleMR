@@ -13,7 +13,9 @@ namespace Sandcastle
     public class WaveSimulator : MonoBehaviour
     {
         [Header("水位")]
-        [Tooltip("基础水位（世界 Y）。还原原始 -0.08")]
+        [Tooltip("静止水面相对沙面的高度（米）。运行时从 SDF 沙面世界 Y 推算出 baseWaterLevel")]
+        public float waterAboveSand = 0.02f;
+        [Tooltip("基础水位（世界 Y）。运行时由 SDF 沙面 + waterAboveSand 自动计算覆写")]
         public float baseWaterLevel = -0.08f;
         [Tooltip("涨潮峰值水位（高于基础水位多少米）")]
         public float waveAmplitude = 0.06f;
@@ -62,10 +64,15 @@ namespace Sandcastle
         System.Collections.IEnumerator InitWaterLevel()
         {
             yield return null;
+            // 从 SDF 沙面的实际世界高度推算水位，这样不管根物体偏移到哪，水面永远贴着沙面
+            if (sdfVolume != null)
+                baseWaterLevel = sdfVolume.SandSurfaceWorldY + waterAboveSand;
             _currentLevel = baseWaterLevel;
+            if (simpleWave != null) simpleWave.restWorldY = baseWaterLevel;
             Shader.SetGlobalFloat("_GlobalWaterY", baseWaterLevel);
             Shader.SetGlobalFloat("_GlobalWetTransition", 0.05f);
-            Debug.Log($"[Wave] 初始化: baseWaterLevel = {baseWaterLevel:F3}");
+            float sandY = sdfVolume != null ? sdfVolume.SandSurfaceWorldY : 0f;
+            Debug.Log($"[Wave] 初始化: SDF沙面Y={sandY:F3}, baseWaterLevel={baseWaterLevel:F3}");
         }
 
         void Update()

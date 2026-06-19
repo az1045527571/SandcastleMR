@@ -120,6 +120,9 @@ namespace Sandcastle
             return transform.TransformPoint(centered);
         }
 
+        /// <summary>沙层表面的实际世界 Y（跟随根物体偏移）。水面/潮汐应以此为基准。</summary>
+        public float SandSurfaceWorldY => LocalToWorld(new Vector3(0f, sandLayerThickness, 0f)).y;
+
         /// <summary>获取当前 SDF 数据数组引用（只读）</summary>
         public float[] GetSdfData() => _sdf;
 

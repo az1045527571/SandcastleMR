@@ -26,6 +26,12 @@ public class SandcastleBootstrap : MonoBehaviour
 
     void Awake()
     {
+        // 归零根 transform：保证所有程序生成的子物体（SDF沙箱/水面/相机）
+        // 落在预期世界坐标。否则根物体被拖动过会让沙面偏移、与水面/相机错位。
+        transform.position = Vector3.zero;
+        transform.rotation = Quaternion.identity;
+        transform.localScale = Vector3.one;
+
         BuildLighting();
         BuildBeach();
         BuildWater();
