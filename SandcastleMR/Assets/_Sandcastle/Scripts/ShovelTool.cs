@@ -109,15 +109,19 @@ namespace Sandcastle
                 _shovel.SetActive(false);
             }
 
-            if (hit && Input.GetMouseButtonDown(0))
+            // 笔刷中心 = cutbox 世界位置（没有则用命中点）
+            Vector3 center = (_digPoint != null) ? _digPoint.position : rh.point;
+            float rotY = _shovel != null ? _shovel.transform.eulerAngles.y : 0f;
+
+            // 按住左键铲（空铲才能挖），松开招（满铲才能倒）
+            if (hit && Input.GetMouseButtonDown(0) && !IsLoaded)
+                Dig(center, rotY);
+
+            if (Input.GetMouseButtonUp(0) && IsLoaded)
             {
-                // 笔刷中心 = cutbox 世界位置（没有则用命中点）
-                Vector3 center = (_digPoint != null) ? _digPoint.position : rh.point;
-                float rotY = _shovel != null ? _shovel.transform.eulerAngles.y : 0f;
-                if (!IsLoaded)
-                    Dig(center, rotY);
-                else
-                    Drop(center, rotY);
+                // 松开时在当前铲斗位置倒（未命中沙面则用上一帧铲斗位置）
+                Vector3 dropCenter = (_digPoint != null) ? _digPoint.position : center;
+                Drop(dropCenter, rotY);
             }
         }
 
