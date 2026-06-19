@@ -31,6 +31,7 @@ namespace Sandcastle
         private ComputeBuffer _edgeTable, _triTable, _edgeVertexIndex, _vertexOffset;
         private int _kEvalBase, _kMC;
         private bool _dirty = true;
+        private bool _loggedOnce = false;
         private Bounds _bounds;
         private MeshRenderer _cpuRenderer;
 
@@ -149,9 +150,11 @@ namespace Sandcastle
             // 阶段一诊断: 直接上传 CPU 已验证的 SDF 场 (绕过 GPU EvaluateBase)
             // CPU _sdf = _sdfBase + _erosion, 已是最终场; erosion 置 0 避免重复叠加
             float[] cpuSdf = _vol.GetSdfData();
+            bool uploaded = false;
             if (cpuSdf != null && cpuSdf.Length == _voxCount)
             {
                 _sdfBaseBuf.SetData(cpuSdf);
+                uploaded = true;
             }
             else
             {
@@ -167,6 +170,31 @@ namespace Sandcastle
 
             // 把 append 计数复制到 indirect args 的 vertexCountPerInstance
             ComputeBuffer.CopyCount(_vertBuf, _indirectArgs, 0);
+
+            if (!_loggedOnce)
+            {
+                _loggedOnce = true;
+                // 回读 indirect args 看实际顶点数
+                uint[] args = new uint[4];
+                _indirectArgs.GetData(args);
+                int cap = _vertBuf.count;
+                // 统计上传的 SDF 场
+                int neg = 0; float mn = 9999f, mx = -9999f;
+                if (cpuSdf != null)
+                {
+                    for (int i = 0; i < cpuSdf.Length; i++)
+                    {
+                        float v = cpuSdf[i];
+                        if (v < 0f) neg++;
+                        if (v < mn) mn = v;
+                        if (v > mx) mx = v;
+                    }
+                }
+                Debug.Log($"[GpuSand] 上传CPU场={uploaded} 体素数={_voxCount} cube数={_cubeCount}\n"
+                    + $"SDF场: 负值(实心)={neg} min={mn:F3} max={mx:F3}\n"
+                    + $"顶点buffer容量={cap} 实际append顶点数={args[0]} instanceCount={args[1]}\n"
+                    + $"VERT_STRIDE={VERT_STRIDE} size={_vol.size} 分辨率={_resX}x{_resY}x{_resZ}");
+            }
 
             _dirty = false;
         }
