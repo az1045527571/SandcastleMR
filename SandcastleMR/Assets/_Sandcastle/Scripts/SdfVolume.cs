@@ -136,6 +136,60 @@ namespace Sandcastle
             }
         }
 
+        /// <summary>
+        /// 铲子 Box 笔刷：在世界坐标 center 为中心、halfExtents 为半边长的盒子区域内修改 erosion。
+        /// dig=true 挖（erosion 加正，嵌深 depth 米，表面凹下）；dig=false 填（erosion 加负，凸起）。
+        /// box 可随 rotationY 朝向旋转。返回实际受影响的实心体素数（供守恒估算）。
+        /// 调用后需 RebuildMesh()。
+        /// </summary>
+        public int BoxBrush(Vector3 worldCenter, Vector3 halfExtents, float rotationY, bool dig, float amount)
+        {
+            float dx = size.x / resolutionX;
+            float dy = size.y / resolutionY;
+            float dz = size.z / resolutionZ;
+            float cy = Mathf.Cos(-rotationY * Mathf.Deg2Rad);
+            float sy = Mathf.Sin(-rotationY * Mathf.Deg2Rad);
+            int affected = 0;
+
+            // 包围盒对应的体素索引范围（用最大半径保守估算，避免遗漏旋转后的角）
+            float reach = new Vector2(halfExtents.x, halfExtents.z).magnitude;
+            for (int z = 0; z < Nz; z++)
+            {
+                for (int y = 0; y < Ny; y++)
+                {
+                    for (int x = 0; x < Nx; x++)
+                    {
+                        Vector3 wp = LocalToWorld(new Vector3(x * dx, y * dy, z * dz));
+                        Vector3 rel = wp - worldCenter;
+                        // 反旋转到 box 本地（绕 Y）
+                        float lx = rel.x * cy - rel.z * sy;
+                        float lz = rel.x * sy + rel.z * cy;
+                        float ly = rel.y;
+                        if (Mathf.Abs(lx) > halfExtents.x) continue;
+                        if (Mathf.Abs(ly) > halfExtents.y) continue;
+                        if (Mathf.Abs(lz) > halfExtents.z) continue;
+
+                        int idx = Index(x, y, z);
+                        bool wasSolid = (_sdfBase[idx] + _erosion[idx]) < 0f;
+                        if (dig)
+                        {
+                            // 挖：erosion 加正，让该体素变空气
+                            _erosion[idx] += amount;
+                            if (wasSolid) affected++;
+                        }
+                        else
+                        {
+                            // 填：erosion 加负，让该体素变实心（不低于 base 原始实心度）
+                            _erosion[idx] -= amount;
+                            bool nowSolid = (_sdfBase[idx] + _erosion[idx]) < 0f;
+                            if (!wasSolid && nowSolid) affected++;
+                        }
+                    }
+                }
+            }
+            return affected;
+        }
+
         // 连通域检测复用缓冲（避免每帧 alloc）
         private bool[] _supported;
         private readonly Queue<int> _floodQueue = new Queue<int>(4096);

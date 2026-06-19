@@ -116,6 +116,11 @@ public class SandcastleBootstrap : MonoBehaviour
         var footGo = new GameObject("FootprintManager");
         footGo.transform.SetParent(transform, false);
         footGo.AddComponent<FootprintManager>();
+
+        // 铲子工具（按 T 切换，空铲挖/满铲倒）
+        var shovelGo = new GameObject("ShovelTool");
+        shovelGo.transform.SetParent(transform, false);
+        shovelGo.AddComponent<ShovelTool>();
     }
 
     void BuildWater()
