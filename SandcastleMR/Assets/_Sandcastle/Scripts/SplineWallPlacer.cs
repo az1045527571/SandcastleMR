@@ -22,8 +22,10 @@ namespace Sandcastle
         public float wallHeight = 0.4f;
 
         [Header("预览")]
-        public Color previewColor = new Color(0.2f, 0.9f, 1f, 1f);
-        public float markerSize = 0.1f;
+        public Color previewColor = Color.white;
+        public float markerSize = 0.08f;
+        [Tooltip("曲线平滑度：每段控制点间插值出多少段")]
+        public int curveSubdivisions = 12;
 
         private Camera _cam;
         private SdfVolume _volume;
@@ -89,7 +91,9 @@ namespace Sandcastle
             lineGo.transform.SetParent(transform, false);
             _previewLine = lineGo.AddComponent<LineRenderer>();
             _previewLine.useWorldSpace = true;
-            _previewLine.widthMultiplier = wallRadius * 2f;
+            _previewLine.widthMultiplier = 0.02f; // 细白线提示路径，不是堤的实际宽度
+            _previewLine.numCornerVertices = 4;
+            _previewLine.numCapVertices = 4;
             _previewLine.positionCount = 0;
             var mat = new Material(Shader.Find("Universal Render Pipeline/Unlit"));
             mat.SetColor("_BaseColor", previewColor);
@@ -122,8 +126,48 @@ namespace Sandcastle
         void UpdatePreviewLine()
         {
             if (_previewLine == null) return;
-            _previewLine.positionCount = _points.Count;
-            for (int i = 0; i < _points.Count; i++)
+            var curve = BuildCurve(_points);
+            _previewLine.positionCount = curve.Count;
+            for (int i = 0; i < curve.Count; i++)
+                _previewLine.SetPosition(i, curve[i] + Vector3.up * 0.01f);
+        }
+
+        /// <summary>
+        /// 用 Catmull-Rom 把控制点加密成平滑曲线（曲线必过每个控制点）。
+        /// 点数 <3 时直接返回原点。
+        /// </summary>
+        List<Vector3> BuildCurve(List<Vector3> pts)
+        {
+            if (pts.Count < 3) return new List<Vector3>(pts);
+            var outp = new List<Vector3>();
+            int n = pts.Count;
+            for (int i = 0; i < n - 1; i++)
+            {
+                Vector3 p0 = pts[Mathf.Max(i - 1, 0)];
+                Vector3 p1 = pts[i];
+                Vector3 p2 = pts[i + 1];
+                Vector3 p3 = pts[Mathf.Min(i + 2, n - 1)];
+                int seg = Mathf.Max(1, curveSubdivisions);
+                for (int s = 0; s < seg; s++)
+                {
+                    float t = s / (float)seg;
+                    outp.Add(CatmullRom(p0, p1, p2, p3, t));
+                }
+            }
+            outp.Add(pts[n - 1]);
+            return outp;
+        }
+
+        static Vector3 CatmullRom(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
+        {
+            float t2 = t * t;
+            float t3 = t2 * t;
+            return 0.5f * (
+                2f * p1 +
+                (-p0 + p2) * t +
+                (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 +
+                (-p0 + 3f * p1 - 3f * p2 + p3) * t3);
+        }
                 _previewLine.SetPosition(i, _points[i] + Vector3.up * 0.01f);
         }
 
@@ -140,7 +184,7 @@ namespace Sandcastle
             go.transform.position = Vector3.zero; // spline 用世界坐标点，物体放原点即可
             var piece = go.AddComponent<SdfPiece>();
             piece.shape = SdfPiece.ShapeType.Spline;
-            piece.splinePoints = new List<Vector3>(_points);
+            piece.splinePoints = BuildCurve(_points);
             piece.splineRadius = wallRadius;
             piece.splineTopY = sandY + wallHeight;
             piece.splineBottomY = sandY - 0.5f; // 向下扎进沙层确保与沙堆相连
