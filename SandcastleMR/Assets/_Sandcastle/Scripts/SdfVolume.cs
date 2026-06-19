@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
+using Unity.Collections;
+using Unity.Jobs;
 
 namespace Sandcastle
 {
@@ -543,21 +545,15 @@ namespace Sandcastle
             return r;
         }
 
-        /// <summary>重算基础 SDF。range=null 时全量重算; 否则只重算指定体素范围(piece 增删局部更新)。</summary>
+        /// <summary>重算基础 SDF。range=null 时全量; 否则只重算指定体素范围。
+        /// 球/盒/样条走 Burst 并行 job; bakedmesh 只在其局部区 CPU 补算 SmoothMin。</summary>
         void EvaluateBase(VoxelRange? range = null)
         {
             float dx = size.x / resolutionX;
             float dy = size.y / resolutionY;
             float dz = size.z / resolutionZ;
 
-            // 初始沙层 = 一个有限厚度的 box（体积局部坐标，角落原点）
-            // Y: 0 ~ sandLayerThickness；XZ: inset ~ size-inset
-            Vector3 boxCenter = new Vector3(size.x * 0.5f, sandLayerThickness * 0.5f, size.z * 0.5f);
-            Vector3 boxHalf = new Vector3(size.x * 0.5f - sandInset,
-                                          sandLayerThickness * 0.5f,
-                                          size.z * 0.5f - sandInset);
-
-            int z0 = 0, z1 = Nz - 1, y0 = 0, y1 = Ny - 1, x0 = 0, x1 = Nx - 1;
+            int x0 = 0, x1 = Nx - 1, y0 = 0, y1 = Ny - 1, z0 = 0, z1 = Nz - 1;
             if (range.HasValue)
             {
                 var r = range.Value;
@@ -565,45 +561,93 @@ namespace Sandcastle
                 y0 = Mathf.Clamp(r.y0, 0, Ny - 1); y1 = Mathf.Clamp(r.y1, 0, Ny - 1);
                 z0 = Mathf.Clamp(r.z0, 0, Nz - 1); z1 = Mathf.Clamp(r.z1, 0, Nz - 1);
             }
+            int rnx = x1 - x0 + 1, rny = y1 - y0 + 1, rnz = z1 - z0 + 1;
+            int rangeCount = rnx * rny * rnz;
+            if (rangeCount <= 0) return;
 
-            // 预算每个 piece 的世界包围盒(加 smoothK 余量), 体素循环时剩枝:
-            // 只对包围盒含该体素的 piece 采样, 跳过远处 piece(尤其贵的 bakedmesh)。
-            int pn = _pieces.Count;
-            var pBounds = new Bounds[pn];
-            for (int i = 0; i < pn; i++)
+            // ---- 收集球/盒/样条 piece → PieceData; 样条点展平 ----
+            var pieceList = new System.Collections.Generic.List<PieceData>();
+            var splineList = new System.Collections.Generic.List<Unity.Mathematics.float2>();
+            var bakedPieces = new System.Collections.Generic.List<SdfPiece>();
+            foreach (var p in _pieces)
             {
-                Bounds b = _pieces[i].WorldBounds();
-                b.Expand(smoothK * 2f);   // SmoothMin 融合影响外扩
-                pBounds[i] = b;
-            }
-
-            for (int z = z0; z <= z1; z++)
-            {
-                for (int y = y0; y <= y1; y++)
+                if (p == null) continue;
+                switch (p.shape)
                 {
-                    for (int x = x0; x <= x1; x++)
+                    case SdfPiece.ShapeType.BakedMesh:
+                        bakedPieces.Add(p);   // 不进 job, CPU 局部补算
+                        break;
+                    case SdfPiece.ShapeType.Box:
                     {
-                        Vector3 localPos = new Vector3(x * dx, y * dy, z * dz);
-                        Vector3 worldPos = LocalToWorld(localPos);
-
-                        // 基础沙层 box SDF
-                        float d = SdfBoxLocal(localPos, boxCenter, boxHalf);
-
-                        // 叠加 piece（世界坐标采样）——包围盒剩枝
-                        for (int i = 0; i < pn; i++)
-                        {
-                            if (!pBounds[i].Contains(worldPos)) continue;
-                            float di = _pieces[i].SampleSdf(worldPos);
-                            d = SmoothMin(d, di, smoothK);
-                        }
-
-                        // 体积最外一圈强制为空气，保证 MC 能封住边界面
-                        bool atBorder = (x == 0 || x == Nx - 1 || y == 0 || y == Ny - 1 ||
-                                         z == 0 || z == Nz - 1);
-                        if (atBorder) d = Mathf.Max(d, 0.01f);
-                        _sdfBase[Index(x, y, z)] = d;
+                        var pd = new PieceData { type = 1 };
+                        pd.worldToLocal = p.transform.worldToLocalMatrix;
+                        pd.boxHalf = Vector3.one * p.radius;
+                        pieceList.Add(pd);
+                        break;
+                    }
+                    case SdfPiece.ShapeType.Spline:
+                    {
+                        var pd = new PieceData { type = 2 };
+                        pd.splineStart = splineList.Count;
+                        pd.splineCount = p.splinePoints != null ? p.splinePoints.Count : 0;
+                        pd.splineRadius = p.splineRadius;
+                        pd.splineTopY = p.splineTopY;
+                        pd.splineBottomY = p.splineBottomY;
+                        if (p.splinePoints != null)
+                            foreach (var sp in p.splinePoints) splineList.Add(new Unity.Mathematics.float2(sp.x, sp.z));
+                        pieceList.Add(pd);
+                        break;
+                    }
+                    default: // Sphere / Capsule 当球
+                    {
+                        var pd = new PieceData { type = 0 };
+                        pd.sphereCenter = p.transform.position;
+                        pd.sphereRadius = p.radius * p.transform.lossyScale.x;
+                        pieceList.Add(pd);
+                        break;
                     }
                 }
+            }
+
+            var pieces = new NativeArray<PieceData>(pieceList.Count, Allocator.TempJob);
+            for (int i = 0; i < pieceList.Count; i++) pieces[i] = pieceList[i];
+            var splinePts = new NativeArray<Unity.Mathematics.float2>(Mathf.Max(1, splineList.Count), Allocator.TempJob);
+            for (int i = 0; i < splineList.Count; i++) splinePts[i] = splineList[i];
+            var sdfNative = new NativeArray<float>(_sdfBase.Length, Allocator.TempJob);
+            sdfNative.CopyFrom(_sdfBase);   // 保留范围外旧值
+
+            var job = new EvaluateBaseJob
+            {
+                nx = Nx, ny = Ny, nz = Nz,
+                rx0 = x0, ry0 = y0, rz0 = z0, rnx = rnx, rny = rny, rnz = rnz,
+                dx = dx, dy = dy, dz = dz,
+                size = size,
+                sandThickness = sandLayerThickness, sandInset = sandInset, smoothK = smoothK,
+                localToWorld = transform.localToWorldMatrix,
+                pieces = pieces, splinePts = splinePts, sdfBase = sdfNative,
+            };
+            job.Schedule(rangeCount, 64).Complete();
+            sdfNative.CopyTo(_sdfBase);
+
+            pieces.Dispose(); splinePts.Dispose(); sdfNative.Dispose();
+
+            // ---- bakedmesh: CPU 在各自局部区补算 SmoothMin ----
+            foreach (var bp in bakedPieces)
+            {
+                Bounds b = bp.WorldBounds(); b.Expand(smoothK * 2f);
+                VoxelRange br = BoundsToVoxelRange(b);
+                int bx0 = Mathf.Clamp(Mathf.Max(br.x0, x0), 0, Nx - 1), bx1 = Mathf.Clamp(Mathf.Min(br.x1, x1), 0, Nx - 1);
+                int by0 = Mathf.Clamp(Mathf.Max(br.y0, y0), 0, Ny - 1), by1 = Mathf.Clamp(Mathf.Min(br.y1, y1), 0, Ny - 1);
+                int bz0 = Mathf.Clamp(Mathf.Max(br.z0, z0), 0, Nz - 1), bz1 = Mathf.Clamp(Mathf.Min(br.z1, z1), 0, Nz - 1);
+                for (int z = bz0; z <= bz1; z++)
+                    for (int y = by0; y <= by1; y++)
+                        for (int x = bx0; x <= bx1; x++)
+                        {
+                            Vector3 wp = LocalToWorld(new Vector3(x * dx, y * dy, z * dz));
+                            float di = bp.SampleSdf(wp);
+                            int idx = Index(x, y, z);
+                            _sdfBase[idx] = SmoothMin(_sdfBase[idx], di, smoothK);
+                        }
             }
         }
 
