@@ -29,8 +29,63 @@ public class SandcastleDebugUI : MonoBehaviour
     {
         if (!_show) return;
 
-        GUILayout.BeginArea(new Rect(10, 10, 340, 220), GUI.skin.box);
+        GUILayout.BeginArea(new Rect(10, 10, 420, 460), GUI.skin.box);
         GUILayout.Label("F1=隐藏   2=放置 B=球 V=浇水 X+左键=删");
+
+        // ===== 坐标诊断 =====
+        GUILayout.Label("─── 坐标诊断 (世界 Y) ───");
+
+        var volume = FindObjectOfType<SdfVolume>();
+        if (volume != null)
+        {
+            Vector3 vc = volume.transform.position;
+            Vector3 sz = volume.size;
+            float volBottom = vc.y - sz.y * 0.5f;
+            float volTop = vc.y + sz.y * 0.5f;
+            float sandTop = volBottom + volume.sandLayerThickness;
+            GUILayout.Label($"SDF 体积中心: {vc.x:F3}, {vc.y:F3}, {vc.z:F3}");
+            GUILayout.Label($"SDF 体积范围 Y: {volBottom:F3} ~ {volTop:F3}");
+            GUILayout.Label($"SDF 体积尺寸: {sz.x:F2} × {sz.y:F2} × {sz.z:F2}");
+            GUILayout.Label($"沙层厚度: {volume.sandLayerThickness:F3}  → 沙面 Y={sandTop:F3}");
+
+            var mf = volume.GetComponent<MeshFilter>();
+            if (mf != null && mf.sharedMesh != null)
+            {
+                Bounds b = mf.sharedMesh.bounds; // 本地
+                Vector3 wMin = volume.transform.TransformPoint(b.min);
+                Vector3 wMax = volume.transform.TransformPoint(b.max);
+                GUILayout.Label($"SDF mesh 顶数: {mf.sharedMesh.vertexCount}");
+                GUILayout.Label($"SDF mesh 世界 Y: {wMin.y:F3} ~ {wMax.y:F3}");
+            }
+            else
+            {
+                GUILayout.Label("SDF mesh: 空 (未生成!)");
+            }
+        }
+        else
+        {
+            GUILayout.Label("SdfVolume: 未找到!");
+        }
+
+        if (_wave != null)
+        {
+            Vector3 wp = _wave.transform.position;
+            GUILayout.Label($"水面实际位置: {wp.x:F3}, {wp.y:F3}, {wp.z:F3}");
+            GUILayout.Label($"水面平面边长: {_wave.size:F2}");
+        }
+        if (_waveSim != null)
+        {
+            GUILayout.Label($"当前水位 CurrentLevel: {_waveSim.CurrentWaterLevel:F3}");
+        }
+        float globalWaterY = Shader.GetGlobalFloat("_GlobalWaterY");
+        GUILayout.Label($"Shader _GlobalWaterY: {globalWaterY:F3}");
+
+        var cam = Camera.main;
+        if (cam != null)
+            GUILayout.Label($"相机位置: {cam.transform.position.x:F2}, {cam.transform.position.y:F2}, {cam.transform.position.z:F2}");
+
+        GUILayout.Space(6);
+        GUILayout.Label("─── 调节 ───");
 
         GUILayout.Label($"水位 Water Level: {waterLevel:F3} m");
         float wh = GUILayout.HorizontalSlider(waterLevel, -0.20f, 0.30f);
