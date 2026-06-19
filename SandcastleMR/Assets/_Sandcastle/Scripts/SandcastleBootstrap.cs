@@ -108,6 +108,11 @@ public class SandcastleBootstrap : MonoBehaviour
         splineGo.AddComponent<SplineWallPlacer>();
 
         // 脚印气氛效果（按住 F 沿鼠标移动留脚印）
+        // 先挂通用法线贴花系统（FootprintManager 依赖它）
+        var decalGo = new GameObject("SandDecalSystem");
+        decalGo.transform.SetParent(transform, false);
+        decalGo.AddComponent<SandDecalSystem>();
+
         var footGo = new GameObject("FootprintManager");
         footGo.transform.SetParent(transform, false);
         footGo.AddComponent<FootprintManager>();

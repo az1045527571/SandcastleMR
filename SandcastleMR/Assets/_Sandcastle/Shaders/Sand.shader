@@ -41,16 +41,8 @@ Shader "Sandcastle/Sand"
             float _GlobalWaterY;
             float _GlobalWetTransition;
 
-            // 脚印（最多 32 个）。每个: xy=世界XZ位置, z=朝向角(弧度), w=强度(0~1, 随时间淑出)
-            #define MAX_FOOTPRINTS 32
-            float4 _Footprints[MAX_FOOTPRINTS];
-            int _FootprintCount;
-            float _FootprintSize;    // 脚印半尺寸（米，正方形，不拉伸）
-            float _FootprintDepth;   // 法线扰动强度
-
-            // 脚印法线贴图（全局，左/右赤脚贴花）
-            TEXTURE2D(_FootprintTexR); SAMPLER(sampler_FootprintTexR);
-            TEXTURE2D(_FootprintTexL); SAMPLER(sampler_FootprintTexL);
+            // 沙面法线贴花通用通道（脚印/手印/车辙…都走这里）
+            #include "SandDecals.hlsl"
 
             struct Attributes
             {
@@ -158,38 +150,9 @@ Shader "Sandcastle/Sand"
                 // 世界法线
                 float3 N = normalize(IN.normalWS);
 
-                // ===== 脚印（采样贴图，仅朝上沙面）=====
-                float upMask = saturate(N.y * 1.5 + 0.2); // N.y 越向上越明显（放宽门限避免误杀）
-                float footMask = 0.0; // 累计脚印遮罩，用于压暗 albedo
-                if (upMask > 0.001 && _FootprintCount > 0)
-                {
-                    float2 wxz = IN.positionWS.xz;
-                    float2 accXZ = float2(0,0);
-                    [loop] for (int fi = 0; fi < MAX_FOOTPRINTS; fi++)
-                    {
-                        if (fi >= _FootprintCount) break;
-                        float4 fp = _Footprints[fi];
-                        float2 d = wxz - fp.xy;
-                        float ca = cos(-fp.z), sa = sin(-fp.z);
-                        float2 lp = float2(d.x * ca - d.y * sa, d.x * sa + d.y * ca); // 脚印本地
-                        // 正方形映射，不拉伸：本地 [-size,size] → UV [0,1]，保持原图比例
-                        float2 uv = lp / (2.0 * _FootprintSize) + 0.5;
-                        if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) continue;
-                        float strength = abs(fp.w);
-                        float4 tex = (fp.w >= 0.0)
-                            ? SAMPLE_TEXTURE2D(_FootprintTexR, sampler_FootprintTexR, uv)
-                            : SAMPLE_TEXTURE2D(_FootprintTexL, sampler_FootprintTexL, uv);
-                        float a = tex.a * strength;
-                        footMask = max(footMask, a);
-                        float2 nTan = (tex.rg * 2.0 - 1.0) * a;
-                        float cf = cos(fp.z), sf = sin(fp.z);
-                        accXZ += float2(nTan.x * cf + nTan.y * sf, -nTan.x * sf + nTan.y * cf);
-                    }
-                    // 法线扰动
-                    N = normalize(N + float3(accXZ.x, 0, accXZ.y) * _FootprintDepth * upMask);
-                    // 压暗压实：脚印处沙被踩实变暗（不依赖微妙的法线光照也能看见）
-                    albedo *= lerp(1.0, 0.7, saturate(footMask) * upMask);
-                }
+                // ===== 沙面法线贴花（脚印等，仅朝上面）=====
+                float upMask = saturate(N.y * 1.5 + 0.2); // 放宽门限避免误杀
+                ApplySandDecals(IN.positionWS.xz, upMask, N, albedo);
 
                 Light mainLight = GetMainLight();
                 float NdotL = saturate(dot(N, mainLight.direction));

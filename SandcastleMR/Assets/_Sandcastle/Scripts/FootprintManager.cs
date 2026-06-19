@@ -1,65 +1,50 @@
-using System.Collections.Generic;
 using UnityEngine;
 
 namespace Sandcastle
 {
     /// <summary>
-    /// 脚印气氛效果（纯 shader 法线扰动，不改几何）：
-    /// - 按住 F，鼠标在沙面上移动时，沿移动方向留下左右交替的脚印
-    /// - 每个脚印随时间淡出，淡出后从数组移除
-    /// - 最多同时 32 个（shader 上限），超出顶掉最旧的
-    ///
-    /// 数据每帧传给 Sand.shader 的全局 uniform 数组 _Footprints。
+    /// 脚印（沙面法线贴花的一个客户端）。
+    /// 渲染走通用的 SandDecalSystem，这里只负责"走路时盖左右脚贴花"。
+    /// 按住 F，鼠标在沙面移动，沿方向留下左右交替的脚印，随时间淡出。
     /// </summary>
     public class FootprintManager : MonoBehaviour
     {
-        const int MaxFootprints = 32;
-
-        [Header("脚印形状")]
-        [Tooltip("脚印半尺寸（米，正方形，不拉伸保持原图比例）")]
+        [Header("脚印")]
+        [Tooltip("脚印半尺寸（米，正方形不拉伸）")]
         public float size = 0.18f;
-        [Tooltip("法线扰动强度")]
-        public float depth = 2.5f;
+        [Tooltip("法线强度")]
+        public float normalStrength = 2.5f;
+        [Tooltip("反照率压暗（0~1，踩实变深）")]
+        public float darken = 0.3f;
         [Tooltip("左右脚横向间距（米）")]
         public float stride = 0.12f;
-
-        [Header("行为")]
         [Tooltip("每走多远留一个脚印（米）")]
         public float stepDistance = 0.25f;
-        [Tooltip("脚印存活时间（秒），之后淡出消失")]
+        [Tooltip("脚印存活时间（秒）")]
         public float lifetime = 8f;
 
-        private struct Footprint
-        {
-            public Vector2 pos;   // 世界 XZ
-            public float yaw;     // 朝向（弧度）
-            public float age;     // 已存活秒
-            public bool isLeft;   // 左脚/右脚
-        }
-
-        private readonly List<Footprint> _prints = new List<Footprint>();
-        private readonly Vector4[] _buf = new Vector4[MaxFootprints];
         private Camera _cam;
-        private SdfVolume _volume;
+        private int _layerR = -1, _layerL = -1;
         private Vector2 _lastXZ;
         private bool _hasLast;
         private bool _leftFoot;
-        private bool _loggedHit;
-        private bool _loggedCount;
 
         void Start()
         {
             _cam = Camera.main;
-            _volume = FindObjectOfType<SdfVolume>();
-            // 加载左/右脚印法线贴图并设为全局
             var texR = Resources.Load<Texture2D>("footprint_R_normal");
             var texL = Resources.Load<Texture2D>("footprint_L_normal");
-            if (texR != null) Shader.SetGlobalTexture("_FootprintTexR", texR);
-            if (texL != null) Shader.SetGlobalTexture("_FootprintTexL", texL);
+            var sys = SandDecalSystem.Instance;
+            if (sys == null)
+            {
+                Debug.LogWarning("[Footprint] 未找到 SandDecalSystem");
+                enabled = false;
+                return;
+            }
+            if (texR != null) _layerR = sys.RegisterTexture(texR);
+            if (texL != null) _layerL = sys.RegisterTexture(texL);
             if (texR == null || texL == null)
                 Debug.LogWarning("[Footprint] 未找到 Resources/footprint_R_normal 或 _L_normal");
-            Shader.SetGlobalFloat("_FootprintSize", size);
-            Shader.SetGlobalFloat("_FootprintDepth", depth);
         }
 
         void Update()
@@ -71,7 +56,6 @@ namespace Sandcastle
                 Ray ray = _cam.ScreenPointToRay(Input.mousePosition);
                 if (Physics.Raycast(ray, out RaycastHit hit, 100f))
                 {
-                    if (!_loggedHit) { Debug.Log($"[Footprint] F命中 {hit.collider.name} @ {hit.point:F3}"); _loggedHit = true; }
                     Vector2 xz = new Vector2(hit.point.x, hit.point.z);
                     if (!_hasLast)
                     {
@@ -84,10 +68,12 @@ namespace Sandcastle
                         if (delta.magnitude >= stepDistance)
                         {
                             Vector2 dir = delta.normalized;
-                            float yaw = Mathf.Atan2(dir.x, dir.y); // 与世界 +Z 的夹角
-                            // 左右脚横向偏移（垂直于前进方向）
+                            float yaw = Mathf.Atan2(dir.x, dir.y);
                             Vector2 side = new Vector2(dir.y, -dir.x) * (stride * 0.5f) * (_leftFoot ? 1f : -1f);
-                            AddPrint(xz + side, yaw, _leftFoot);
+                            int layer = _leftFoot ? _layerL : _layerR;
+                            if (layer >= 0)
+                                SandDecalSystem.Instance.AddDecal(xz + side, yaw, layer,
+                                    size, darken, normalStrength, lifetime);
                             _leftFoot = !_leftFoot;
                             _lastXZ = xz;
                         }
@@ -98,44 +84,6 @@ namespace Sandcastle
             {
                 _hasLast = false;
             }
-
-            // 老化 + 淡出
-            for (int i = _prints.Count - 1; i >= 0; i--)
-            {
-                var p = _prints[i];
-                p.age += Time.deltaTime;
-                if (p.age >= lifetime) { _prints.RemoveAt(i); continue; }
-                _prints[i] = p;
-            }
-
-            UploadToShader();
-        }
-
-        void AddPrint(Vector2 xz, float yaw, bool isLeft)
-        {
-            if (_prints.Count >= MaxFootprints)
-                _prints.RemoveAt(0); // 顶掉最旧的
-            _prints.Add(new Footprint { pos = xz, yaw = yaw, age = 0f, isLeft = isLeft });
-        }
-
-        void UploadToShader()
-        {
-            int n = _prints.Count;
-            for (int i = 0; i < n; i++)
-            {
-                var p = _prints[i];
-                // 强度：随年龄线性淡出
-                float strength = 1f - Mathf.Clamp01(p.age / lifetime);
-                // w 符号区分左/右脚：正=右脚, 负=左脚
-                if (p.isLeft) strength = -strength;
-                _buf[i] = new Vector4(p.pos.x, p.pos.y, p.yaw, strength);
-            }
-            Shader.SetGlobalVectorArray("_Footprints", _buf);
-            Shader.SetGlobalInt("_FootprintCount", n);
-            if (n > 0 && !_loggedCount) { Debug.Log($"[Footprint] 已上传 {n} 个脚印到 shader (size={size} D={depth})"); _loggedCount = true; }
-            // 形状参数可能运行时被调，每帧同步
-            Shader.SetGlobalFloat("_FootprintSize", size);
-            Shader.SetGlobalFloat("_FootprintDepth", depth);
         }
     }
 }
