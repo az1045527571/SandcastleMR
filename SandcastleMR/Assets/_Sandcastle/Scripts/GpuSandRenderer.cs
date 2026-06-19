@@ -31,8 +31,6 @@ namespace Sandcastle
         private ComputeBuffer _edgeTable, _triTable, _edgeVertexIndex, _vertexOffset;
         private int _kEvalBase, _kMC;
         private bool _dirty = true;
-        private bool _loggedOnce = false;
-        private bool _loggedDraw = false;
         private int _vertCount = 0;
         private Bounds _bounds;
         private MeshRenderer _cpuRenderer;
@@ -48,12 +46,8 @@ namespace Sandcastle
             if (compute == null) compute = Resources.Load<ComputeShader>("SandMarchingCubes");
             if (material == null)
             {
-                // 诊断: 先用纯红极简 shader 隔离问题
-                var sh = Shader.Find("Sandcastle/SandGPU_Debug");
-                if (sh == null) sh = Shader.Find("Sandcastle/SandGPU");
+                var sh = Shader.Find("Sandcastle/SandGPU");
                 if (sh != null) material = new Material(sh);
-                string shName = sh != null ? sh.name : "NULL";
-                Debug.Log($"[GpuSand] shader={shName} 找到compute={compute!=null}");
             }
             if (compute == null || material == null)
             {
@@ -180,49 +174,6 @@ namespace Sandcastle
             _counterBuf.GetData(cnt);
             _vertCount = (int)cnt[0];
 
-            if (!_loggedOnce)
-            {
-                _loggedOnce = true;
-                // 回读 indirect args 看实际顶点数
-                uint[] args = new uint[1];
-                _counterBuf.GetData(args);
-                int cap = _vertBuf.count;
-                // 统计上传的 SDF 场
-                int neg = 0; float mn = 9999f, mx = -9999f;
-                if (cpuSdf != null)
-                {
-                    for (int i = 0; i < cpuSdf.Length; i++)
-                    {
-                        float v = cpuSdf[i];
-                        if (v < 0f) neg++;
-                        if (v < mn) mn = v;
-                        if (v > mx) mx = v;
-                    }
-                }
-                Debug.Log($"[GpuSand] 上传CPU场={uploaded} 体素数={_voxCount} cube数={_cubeCount}\n"
-                    + $"SDF场: 负值(实心)={neg} min={mn:F3} max={mx:F3}\n"
-                    + $"顶点buffer容量={cap} 实际append顶点数={args[0]} instanceCount={args[1]}\n"
-                    + $"VERT_STRIDE={VERT_STRIDE} size={_vol.size} 分辨率={_resX}x{_resY}x{_resZ}");
-
-                // 回读前 6 个顶点的实际坐标 (本地中心原点), 看是否在 ±size/2 范围内
-                int n = (int)args[0];
-                if (n > 0)
-                {
-                    int sample = Mathf.Min(n, 6);
-                    var verts = new Vector4[sample * 2]; // 每顶点 2 个 float4 (pos, nw)
-                    _vertBuf.GetData(verts, 0, 0, sample * 2);
-                    var sb = new System.Text.StringBuilder("[GpuSand] 前6顶点(本地坐标,应在±"
-                        + (_vol.size * 0.5f) + "):\n");
-                    for (int i = 0; i < sample; i++)
-                    {
-                        Vector4 p = verts[i * 2];
-                        Vector4 nw = verts[i * 2 + 1];
-                        sb.AppendLine($"  v{i} pos=({p.x:F2},{p.y:F2},{p.z:F2}) n=({nw.x:F2},{nw.y:F2},{nw.z:F2}) wet={nw.w:F2}");
-                    }
-                    Debug.Log(sb.ToString());
-                }
-            }
-
             _dirty = false;
         }
 
@@ -241,7 +192,6 @@ namespace Sandcastle
             if (_vertCount <= 0) return;
             material.SetBuffer("_VertBuf", _vertBuf);
             Shader.SetGlobalBuffer("_VertBuf", _vertBuf); // 绕过 SRP Batcher 对 material buffer 的坑
-            if (!_loggedDraw) { _loggedDraw = true; Debug.Log($"[GpuSand] DrawProcedural 顶点数={_vertCount} mat={material.shader.name} bounds={_bounds}"); }
             Graphics.DrawProcedural(material, _bounds, MeshTopology.Triangles, _vertCount, 1,
                 null, null, UnityEngine.Rendering.ShadowCastingMode.On, true, gameObject.layer);
         }
