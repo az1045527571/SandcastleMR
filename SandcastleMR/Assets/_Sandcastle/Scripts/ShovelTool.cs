@@ -70,6 +70,7 @@ namespace Sandcastle
         private bool _holding;
         private SdfVolume _volume;
         private GameObject _shovel;
+        private Renderer[] _shovelRenderers;
         private Transform _digPoint;
         private GameObject _loadedSand;
 
@@ -130,7 +131,7 @@ namespace Sandcastle
             // 铲子跟随鼠标：面向相机 + 基础姿态 + 抬起偏移，让 cutbox 对准命中点
             if (hit && _shovel != null)
             {
-                _shovel.SetActive(true);
+                SetShovelVisible(true);
                 Vector3 toCam = _cam.transform.position - rh.point;
                 toCam.y = 0;
                 Quaternion faceRot = (toCam.sqrMagnitude > 1e-4f)
@@ -148,7 +149,7 @@ namespace Sandcastle
             }
             else if (_shovel != null)
             {
-                _shovel.SetActive(false);
+                SetShovelVisible(false);
             }
 
             // 笔刷中心 = cutbox 世界位置（没有则用命中点）
@@ -201,7 +202,18 @@ namespace Sandcastle
         {
             IsActive = on;
             ShovelActive = on;
-            if (_shovel != null) _shovel.SetActive(on);
+            SetShovelVisible(on);
+        }
+
+        // 切换铲子可见性用渲染器开关，而不是禁用整个物体
+        // （ShovelTool 就挂在铲子根上，禁用物体会连 Update 一起停，按 T 就失灵）
+        void SetShovelVisible(bool on)
+        {
+            if (_shovel == null) return;
+            if (_shovelRenderers == null)
+                _shovelRenderers = _shovel.GetComponentsInChildren<Renderer>(true);
+            foreach (var r in _shovelRenderers)
+                if (r != null) r.enabled = on;
         }
 
         void UpdateLoadedVisual()
