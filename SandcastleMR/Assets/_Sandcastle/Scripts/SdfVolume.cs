@@ -105,6 +105,8 @@ namespace Sandcastle
         public System.Collections.Generic.IReadOnlyList<SdfPiece> Pieces => _pieces;
         /// <summary>erosion 场（GPU 路径上传用）</summary>
         public float[] GetErosionData() => _erosion;
+        /// <summary>base SDF 场(含沙层+所有piece, GPU 渲染路径上传用)。</summary>
+        public float[] GetBaseData() => _sdfBase;
         /// <summary>base 是否需重算（piece 增删），供 GPU 决定是否重跑 EvaluateBase kernel</summary>
         public bool ConsumeBaseDirty() { bool d = _baseDirty; _baseDirty = false; return d; }
         public bool BaseDirty => _baseDirty;
@@ -390,9 +392,17 @@ namespace Sandcastle
         {
             // GPU 路径：base(含piece)和 erosion 都在 GPU 算，CPU 不跑 EvaluateBase/合成/MC
             // _baseDirty 交由 GpuSandRenderer.ConsumeBaseDirty 读取决定是否重跑 GPU EvaluateBase
+            // GPU 路径：base(含 piece, 含 bakedmesh) 仍由 CPU 算一次(低频, 仅 piece 增删),
+            // 然后上传给 GPU 渲染。侵蚀/塌陷/collider 都依赖 CPU _sdfBase, 所以必须始终正确。
+            // CPU 不跑 ExtractMesh(那是每帧的 30~50ms 瓶颈), 渲染交 GPU。
             if (GpuSand != null && GpuSand.useGpu)
             {
-                if (_baseDirty) { GpuSand.MarkBaseDirty(); _baseDirty = false; }
+                if (_baseDirty)
+                {
+                    EvaluateBase();      // 算 CPU _sdfBase(含 bakedmesh, SampleSdf 原生支持)
+                    _baseDirty = false;
+                    GpuSand.MarkBaseDirty();   // 通知 GPU 重新上传 base
+                }
                 else GpuSand.MarkDirty();
                 return;
             }
@@ -642,7 +652,8 @@ namespace Sandcastle
             if (_meshCollider != null)
             {
                 _meshCollider.sharedMesh = null;
-                _meshCollider.sharedMesh = _mesh;
+                // 空 mesh(全被侵蚀掉)赋给 MeshCollider 会报 "doesn't have any vertices" 警告, 跳过
+                if (_vertBuf.Count > 0) _meshCollider.sharedMesh = _mesh;
             }
         }
 

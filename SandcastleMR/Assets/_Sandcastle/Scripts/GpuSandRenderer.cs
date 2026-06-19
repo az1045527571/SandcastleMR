@@ -235,14 +235,13 @@ namespace Sandcastle
         {
             compute.SetMatrix("_SandL2W", transform.localToWorldMatrix);
 
-            // base(含 piece) 仅在 piece 增删时重算
+            // base(含 piece+bakedmesh) 由 CPU 算好, 这里直接上传。
+            // 不再跑 GPU EvaluateBase kernel(它只支持球/盒/样条, bakedmesh 会退化成球)。
             if (_baseDirtyGpu)
             {
-                int pcount = UploadPieces();
-                compute.SetInt("_PieceCount", pcount);
-                compute.SetFloat("_SmoothK", _vol.smoothK);
-                compute.Dispatch(_kEvalBase,
-                    Mathf.CeilToInt(_nx / 4f), Mathf.CeilToInt(_ny / 4f), Mathf.CeilToInt(_nz / 4f));
+                float[] baseData = _vol.GetBaseData();
+                if (baseData != null && baseData.Length == _voxCount)
+                    _sdfBaseBuf.SetData(baseData);
                 _baseDirtyGpu = false;
             }
 
