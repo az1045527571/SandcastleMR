@@ -46,6 +46,8 @@ namespace Sandcastle
         private Vector2 _lastXZ;
         private bool _hasLast;
         private bool _leftFoot;
+        private bool _loggedHit;
+        private bool _loggedCount;
 
         void Start()
         {
@@ -72,6 +74,7 @@ namespace Sandcastle
                 Ray ray = _cam.ScreenPointToRay(Input.mousePosition);
                 if (Physics.Raycast(ray, out RaycastHit hit, 100f))
                 {
+                    if (!_loggedHit) { Debug.Log($"[Footprint] F命中 {hit.collider.name} @ {hit.point:F3}"); _loggedHit = true; }
                     Vector2 xz = new Vector2(hit.point.x, hit.point.z);
                     if (!_hasLast)
                     {
@@ -132,6 +135,7 @@ namespace Sandcastle
             }
             Shader.SetGlobalVectorArray("_Footprints", _buf);
             Shader.SetGlobalInt("_FootprintCount", n);
+            if (n > 0 && !_loggedCount) { Debug.Log($"[Footprint] 已上传 {n} 个脚印到 shader (L={length} W={width} D={depth})"); _loggedCount = true; }
             // 形状参数可能运行时被调，每帧同步
             Shader.SetGlobalFloat("_FootprintLength", length);
             Shader.SetGlobalFloat("_FootprintWidth", width);

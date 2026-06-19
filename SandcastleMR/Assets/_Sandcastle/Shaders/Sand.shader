@@ -156,11 +156,9 @@ Shader "Sandcastle/Sand"
                 float sparkle = spXZ * weights.y + spXY * weights.z + spYZ * weights.x;
                 albedo += sparkle * _SparkleStrength * (1.0 - wetness);
 
-                // Lambert 光照
-                float3 N = normalize(IN.normalWS);
-
-                // ===== 脚印法线扰动（采样贴图，仅朝上沙面）=====
-                float upMask = saturate(N.y * 2.0 - 0.5); // N.y 越向上越明显
+                // ===== 脚印（采样贴图，仅朝上沙面）=====
+                float upMask = saturate(N.y * 1.5 + 0.2); // N.y 越向上越明显（放宽门限避免误杀）
+                float footMask = 0.0; // 累计脚印遮罩，用于压暗 albedo
                 if (upMask > 0.001 && _FootprintCount > 0)
                 {
                     float2 wxz = IN.positionWS.xz;
@@ -172,22 +170,23 @@ Shader "Sandcastle/Sand"
                         float2 d = wxz - fp.xy;
                         float ca = cos(-fp.z), sa = sin(-fp.z);
                         float2 lp = float2(d.x * ca - d.y * sa, d.x * sa + d.y * ca); // 脚印本地
-                        // 本地 → UV (脚印范围 [-L,L]x[-W,W] 映射到 [0,1])
                         float2 uv = float2(lp.x / (2.0 * _FootprintWidth) + 0.5,
                                            lp.y / (2.0 * _FootprintLength) + 0.5);
                         if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) continue;
-                        // fp.w 符号区分左/右脚，绝对值为强度
                         float strength = abs(fp.w);
                         float4 tex = (fp.w >= 0.0)
                             ? SAMPLE_TEXTURE2D(_FootprintTexR, sampler_FootprintTexR, uv)
                             : SAMPLE_TEXTURE2D(_FootprintTexL, sampler_FootprintTexL, uv);
-                        // 贴图是 OpenGL 法线图: rg ∈[0,1] → 切线空间 xy。alpha=脚印遮罩
-                        float2 nTan = (tex.rg * 2.0 - 1.0) * tex.a * strength;
-                        // 切线空间 xy 旋回世界 XZ（按脚印朝向）
+                        float a = tex.a * strength;
+                        footMask = max(footMask, a);
+                        float2 nTan = (tex.rg * 2.0 - 1.0) * a;
                         float cf = cos(fp.z), sf = sin(fp.z);
                         accXZ += float2(nTan.x * cf + nTan.y * sf, -nTan.x * sf + nTan.y * cf);
                     }
+                    // 法线扰动
                     N = normalize(N + float3(accXZ.x, 0, accXZ.y) * _FootprintDepth * upMask);
+                    // 压暗压实：脚印处沙被踩实变暗（不依赖微妙的法线光照也能看见）
+                    albedo *= lerp(1.0, 0.7, saturate(footMask) * upMask);
                 }
 
                 Light mainLight = GetMainLight();
