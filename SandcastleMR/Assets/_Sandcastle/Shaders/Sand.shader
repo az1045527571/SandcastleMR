@@ -45,8 +45,7 @@ Shader "Sandcastle/Sand"
             #define MAX_FOOTPRINTS 32
             float4 _Footprints[MAX_FOOTPRINTS];
             int _FootprintCount;
-            float _FootprintLength;  // 脚印长半轴（米）
-            float _FootprintWidth;   // 脚印宽半轴（米）
+            float _FootprintSize;    // 脚印半尺寸（米，正方形，不拉伸）
             float _FootprintDepth;   // 法线扰动强度
 
             // 脚印法线贴图（全局，左/右赤脚贴花）
@@ -173,8 +172,8 @@ Shader "Sandcastle/Sand"
                         float2 d = wxz - fp.xy;
                         float ca = cos(-fp.z), sa = sin(-fp.z);
                         float2 lp = float2(d.x * ca - d.y * sa, d.x * sa + d.y * ca); // 脚印本地
-                        float2 uv = float2(lp.x / (2.0 * _FootprintWidth) + 0.5,
-                                           lp.y / (2.0 * _FootprintLength) + 0.5);
+                        // 正方形映射，不拉伸：本地 [-size,size] → UV [0,1]，保持原图比例
+                        float2 uv = lp / (2.0 * _FootprintSize) + 0.5;
                         if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) continue;
                         float strength = abs(fp.w);
                         float4 tex = (fp.w >= 0.0)

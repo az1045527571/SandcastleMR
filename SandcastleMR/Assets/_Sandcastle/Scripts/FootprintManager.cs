@@ -16,12 +16,10 @@ namespace Sandcastle
         const int MaxFootprints = 32;
 
         [Header("脚印形状")]
-        [Tooltip("脚印长半轴（米）")]
-        public float length = 0.18f;
-        [Tooltip("脚印宽半轴（米）")]
-        public float width = 0.08f;
+        [Tooltip("脚印半尺寸（米，正方形，不拉伸保持原图比例）")]
+        public float size = 0.18f;
         [Tooltip("法线扰动强度")]
-        public float depth = 0.6f;
+        public float depth = 2.5f;
         [Tooltip("左右脚横向间距（米）")]
         public float stride = 0.12f;
 
@@ -60,8 +58,7 @@ namespace Sandcastle
             if (texL != null) Shader.SetGlobalTexture("_FootprintTexL", texL);
             if (texR == null || texL == null)
                 Debug.LogWarning("[Footprint] 未找到 Resources/footprint_R_normal 或 _L_normal");
-            Shader.SetGlobalFloat("_FootprintLength", length);
-            Shader.SetGlobalFloat("_FootprintWidth", width);
+            Shader.SetGlobalFloat("_FootprintSize", size);
             Shader.SetGlobalFloat("_FootprintDepth", depth);
         }
 
@@ -135,10 +132,9 @@ namespace Sandcastle
             }
             Shader.SetGlobalVectorArray("_Footprints", _buf);
             Shader.SetGlobalInt("_FootprintCount", n);
-            if (n > 0 && !_loggedCount) { Debug.Log($"[Footprint] 已上传 {n} 个脚印到 shader (L={length} W={width} D={depth})"); _loggedCount = true; }
+            if (n > 0 && !_loggedCount) { Debug.Log($"[Footprint] 已上传 {n} 个脚印到 shader (size={size} D={depth})"); _loggedCount = true; }
             // 形状参数可能运行时被调，每帧同步
-            Shader.SetGlobalFloat("_FootprintLength", length);
-            Shader.SetGlobalFloat("_FootprintWidth", width);
+            Shader.SetGlobalFloat("_FootprintSize", size);
             Shader.SetGlobalFloat("_FootprintDepth", depth);
         }
     }
