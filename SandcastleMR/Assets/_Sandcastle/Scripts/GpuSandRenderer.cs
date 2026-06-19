@@ -37,8 +37,7 @@ namespace Sandcastle
         private ComputeBuffer _sdfBaseBuf, _erosionBuf, _wetnessBuf;
         private ComputeBuffer _vertBuf, _counterBuf;
         private ComputeBuffer _edgeTable, _triTable, _edgeVertexIndex, _vertexOffset;
-        private ComputeBuffer _pieceBuf, _splinePtsBuf;
-        private int _kEvalBase, _kMC;
+        private int _kMC;
         private bool _dirty = true;
         private bool _baseDirtyGpu = true;  // 需重跑 GPU EvaluateBase(piece 增删)
         private int _vertCount = 0;
@@ -50,10 +49,6 @@ namespace Sandcastle
         private MeshCollider _meshCollider;
         private Mesh _colliderMesh;
         private bool _colliderDirty = true;  // 几何变了才重建 collider
-
-        // Piece struct: float4x4(64) + float4(16) + float4(16) = 96 bytes
-        private const int PIECE_STRIDE = 96;
-        private const int MAX_SPLINE_PTS = 4096;
 
         // Vert: float4 pos + float4 nw = 8 floats = 32 bytes (全 float4 对齐避免 padding 坑)
         private const int VERT_STRIDE = 32;
@@ -106,11 +101,6 @@ namespace Sandcastle
             _counterBuf = new ComputeBuffer(1, sizeof(uint));
             _counterBuf.SetData(new uint[] { 0 });
 
-            // Piece / spline buffer：必须在 SetComputeParams 绑定前分配，否则 SetBuffer(null) 抛 ArgumentNullException
-            _pieceBuf = new ComputeBuffer(64, PIECE_STRIDE);                 // 最多 64 个 piece
-            _splinePtsBuf = new ComputeBuffer(MAX_SPLINE_PTS, sizeof(float) * 2); // Vector2 控制点
-
-            _kEvalBase = compute.FindKernel("EvaluateBase");
             _kMC = compute.FindKernel("MarchingCubes");
 
             // 包围盒（世界）：体积尺寸，中心在物体位置
@@ -150,21 +140,14 @@ namespace Sandcastle
 
         void SetComputeParams()
         {
-            foreach (int k in new[] { _kEvalBase, _kMC })
-            {
-                compute.SetInt("_ResX", _resX);
-                compute.SetInt("_ResY", _resY);
-                compute.SetInt("_ResZ", _resZ);
-                compute.SetVector("_Size", _vol.size);
-                compute.SetFloat("_SandThickness", _vol.sandLayerThickness);
-                compute.SetFloat("_SandInset", _vol.sandInset);
-                compute.SetFloat("_IsoLevel", _vol.isoLevel);
-            }
-            // EvaluateBase 绑定
-            compute.SetBuffer(_kEvalBase, "_SdfBaseBuf", _sdfBaseBuf);
-            compute.SetBuffer(_kEvalBase, "_Pieces", _pieceBuf);
-            compute.SetBuffer(_kEvalBase, "_SplinePts", _splinePtsBuf);
-            // MarchingCubes 绑定
+            compute.SetInt("_ResX", _resX);
+            compute.SetInt("_ResY", _resY);
+            compute.SetInt("_ResZ", _resZ);
+            compute.SetVector("_Size", _vol.size);
+            compute.SetFloat("_SandThickness", _vol.sandLayerThickness);
+            compute.SetFloat("_SandInset", _vol.sandInset);
+            compute.SetFloat("_IsoLevel", _vol.isoLevel);
+            // MarchingCubes 绑定 (base 由 CPU 算好直接上传, 不再跑 GPU EvaluateBase kernel)
             compute.SetBuffer(_kMC, "_SdfBaseBuf", _sdfBaseBuf);
             compute.SetBuffer(_kMC, "_ErosionBuf", _erosionBuf);
             compute.SetBuffer(_kMC, "_WetnessBuf", _wetnessBuf);
@@ -174,61 +157,6 @@ namespace Sandcastle
             compute.SetBuffer(_kMC, "_TriTable", _triTable);
             compute.SetBuffer(_kMC, "_EdgeVertexIndex", _edgeVertexIndex);
             compute.SetBuffer(_kMC, "_VertexOffset", _vertexOffset);
-        }
-
-        // 收集 SdfVolume 的 piece 参数上传 GPU
-        int UploadPieces()
-        {
-            var pieces = _vol.Pieces;
-            int n = 0;
-            var pdata = new System.Collections.Generic.List<float>();   // 每 piece 24 floats (96B)
-            var spts = new System.Collections.Generic.List<Vector2>();
-            for (int i = 0; i < pieces.Count && n < 64; i++)
-            {
-                var p = pieces[i];
-                if (p == null) continue;
-                Matrix4x4 w2l = p.transform.worldToLocalMatrix;
-                int type;
-                Vector4 p0, p1;
-                switch (p.shape)
-                {
-                    case SdfPiece.ShapeType.Box:
-                        type = 1;
-                        float hb = p.radius; // CPU 版 halfSize = radius
-                        p0 = new Vector4(hb, hb, hb, 0);
-                        p1 = new Vector4(0, 0, 0, type);
-                        break;
-                    case SdfPiece.ShapeType.Spline:
-                        type = 2;
-                        int start = spts.Count;
-                        if (p.splinePoints != null)
-                            foreach (var sp in p.splinePoints) spts.Add(new Vector2(sp.x, sp.z));
-                        int cnt = p.splinePoints != null ? p.splinePoints.Count : 0;
-                        p0 = new Vector4(start, cnt, p.splineRadius, p.splineTopY);
-                        p1 = new Vector4(p.splineBottomY, 0, 0, type);
-                        break;
-                    default: // Sphere (bakedmesh 也当球处理, 跳过烘焙)
-                        type = 0;
-                        Vector3 c = p.transform.position;
-                        float r = p.radius * p.transform.lossyScale.x;
-                        p0 = new Vector4(c.x, c.y, c.z, r);
-                        p1 = new Vector4(0, 0, 0, type);
-                        break;
-                }
-                // worldToLocal 矩阵 16 floats (球/spline 不用但占位)
-                for (int r = 0; r < 4; r++)
-                    for (int col = 0; col < 4; col++)
-                        pdata.Add(w2l[r, col]);
-                pdata.Add(p0.x); pdata.Add(p0.y); pdata.Add(p0.z); pdata.Add(p0.w);
-                pdata.Add(p1.x); pdata.Add(p1.y); pdata.Add(p1.z); pdata.Add(p1.w);
-                n++;
-            }
-            if (n > 0)
-            {
-                _pieceBuf.SetData(pdata.ToArray());
-                if (spts.Count > 0) _splinePtsBuf.SetData(spts.ToArray());
-            }
-            return n;
         }
 
         void Rebuild()
@@ -354,8 +282,6 @@ namespace Sandcastle
             _triTable?.Release();
             _edgeVertexIndex?.Release();
             _vertexOffset?.Release();
-            _pieceBuf?.Release();
-            _splinePtsBuf?.Release();
             if (_colliderMesh != null) Destroy(_colliderMesh);
         }
     }

@@ -1,9 +1,8 @@
-// GPU 沙子 Marching Cubes (阶段一)
-// 两个 kernel:
-//   EvaluateBase  - 算地形基底沙层 box SDF 写入 _SdfBaseBuf (piece 合成阶段二再加)
-//   MarchingCubes - 查表 MC, 从 sdf=base+erosion 生成三角形顶点 append 到 _VertBuf
+// GPU 沙子 Marching Cubes
+// kernel:
+//   MarchingCubes - 查表 MC, 从 sdf=base+erosion 生成三角形顶点写入 _VertBuf
+// base(含所有 piece, 含 bakedmesh) 由 CPU SdfVolume.EvaluateBase 算好后上传 _SdfBaseBuf
 // 参考 docs/GPU_SAND_PHASE1.md
-#pragma kernel EvaluateBase
 #pragma kernel MarchingCubes
 
 // ---- 顶点结构 (全 float4 对齐, 避免 float3 在 structured buffer 的 padding 坑: 8 floats = 32B) ----
@@ -37,113 +36,10 @@ float _SandInset;
 float _IsoLevel;
 float4x4 _SandL2W;                 // 体积本地(中心原点)→世界, 在 compute 直接变换避免 shader 端矩阵问题
 
-// ---- SdfPiece 合成 (球/盒/spline; bakedmesh 跳过) ----
-// type: 0=Sphere 1=Box 2=Spline
-struct Piece
-{
-    float4x4 worldToLocal;  // 世界→piece本地 (盒用; 球用平移部分)
-    float4 p0;              // Sphere: xyz=世界心 w=半径; Box: xyz=半边长; Spline: x=起始点idx y=点数 z=半宽 w=顶Y
-    float4 p1;              // Spline: x=底Y; type 存在 p1.w
-};
-StructuredBuffer<Piece> _Pieces;
-StructuredBuffer<float2> _SplinePts;  // 所有 spline 控制点展平 (XZ)
-int _PieceCount;
-float _SmoothK;
-
-// IQ 多项式 SmoothMin (与 CPU 版一致)
-float SmoothMin(float a, float b, float k)
-{
-    if (k <= 1e-6) return min(a, b);
-    float h = saturate(0.5 + 0.5 * (b - a) / k);
-    return lerp(b, a, h) - k * h * (1.0 - h);
-}
-
-float SdfPieceBox(float3 worldPos, Piece pc)
-{
-    float3 local = mul(pc.worldToLocal, float4(worldPos, 1.0)).xyz;
-    float3 q = abs(local) - pc.p0.xyz;
-    return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
-}
-
-float DistToSeg(float2 p, float2 a, float2 b)
-{
-    float2 ab = b - a;
-    float t = saturate(dot(p - a, ab) / max(dot(ab, ab), 1e-8));
-    float2 proj = a + t * ab;
-    return distance(p, proj);
-}
-
-float SdfPieceSpline(float3 worldPos, Piece pc)
-{
-    int start = (int)pc.p0.x;
-    int cnt = (int)pc.p0.y;
-    float halfW = pc.p0.z, topY = pc.p0.w, botY = pc.p1.x;
-    float2 pxz = float2(worldPos.x, worldPos.z);
-    float distXZ = 1e9;
-    if (cnt == 1) distXZ = distance(pxz, _SplinePts[start]);
-    else for (int i = 0; i < cnt - 1; i++)
-        distXZ = min(distXZ, DistToSeg(pxz, _SplinePts[start + i], _SplinePts[start + i + 1]));
-    float horiz = distXZ - halfW;
-    float cy = (topY + botY) * 0.5, halfY = (topY - botY) * 0.5;
-    float vert = abs(worldPos.y - cy) - halfY;
-    float qx = max(horiz, 0.0), qy = max(vert, 0.0);
-    return sqrt(qx*qx + qy*qy) + min(max(horiz, vert), 0.0);
-}
-
-float SamplePiece(float3 worldPos, Piece pc)
-{
-    int type = (int)pc.p1.w;
-    if (type == 0) return distance(worldPos, pc.p0.xyz) - pc.p0.w;  // Sphere
-    if (type == 1) return SdfPieceBox(worldPos, pc);
-    return SdfPieceSpline(worldPos, pc);
-}
-
 int Nx() { return _ResX + 1; }
 int Ny() { return _ResY + 1; }
 int Nz() { return _ResZ + 1; }
 int Index(int x, int y, int z) { return x + y * Nx() + z * Nx() * Ny(); }
-
-// box SDF (体积本地坐标, 角落原点)
-float SdfBoxLocal(float3 p, float3 center, float3 half)
-{
-    float3 q = abs(p - center) - half;
-    float outside = length(max(q, 0.0));
-    float inside = min(max(q.x, max(q.y, q.z)), 0.0);
-    return outside + inside;
-}
-
-[numthreads(4,4,4)]
-void EvaluateBase(uint3 id : SV_DispatchThreadID)
-{
-    int x = (int)id.x, y = (int)id.y, z = (int)id.z;
-    if (x >= Nx() || y >= Ny() || z >= Nz()) return;
-
-    float dx = _Size.x / _ResX;
-    float dy = _Size.y / _ResY;
-    float dz = _Size.z / _ResZ;
-    float3 localPos = float3(x * dx, y * dy, z * dz);
-
-    float3 boxCenter = float3(_Size.x * 0.5, _SandThickness * 0.5, _Size.z * 0.5);
-    float3 boxHalf   = float3(_Size.x * 0.5 - _SandInset, _SandThickness * 0.5, _Size.z * 0.5 - _SandInset);
-    float d = SdfBoxLocal(localPos, boxCenter, boxHalf);
-
-    // 叠加所有 piece (世界坐标采样, 与 CPU 版一致)
-    if (_PieceCount > 0)
-    {
-        float3 worldPos = mul(_SandL2W, float4(localPos - _Size * 0.5, 1.0)).xyz;
-        for (int i = 0; i < _PieceCount; i++)
-        {
-            float di = SamplePiece(worldPos, _Pieces[i]);
-            d = SmoothMin(d, di, _SmoothK);
-        }
-    }
-
-    // 体积最外一圈强制为空气, 保证 MC 封边
-    bool atBorder = (x == 0 || x == Nx()-1 || y == 0 || y == Ny()-1 || z == 0 || z == Nz()-1);
-    if (atBorder) d = max(d, 0.01);
-
-    _SdfBaseBuf[Index(x, y, z)] = d;
-}
 
 // 最终 sdf = base + erosion
 float SampleSdf(int x, int y, int z)
