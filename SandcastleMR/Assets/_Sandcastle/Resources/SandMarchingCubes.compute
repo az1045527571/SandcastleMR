@@ -34,6 +34,7 @@ float3 _Size;                      // 体积物理尺寸 (米)
 float _SandThickness;
 float _SandInset;
 float _IsoLevel;
+float _NormalSmooth;               // 法线梯度采样半径(以体素计), 越大越平滑, 1.5~2.5 推荐
 float4x4 _SandL2W;                 // 体积本地(中心原点)→世界, 在 compute 直接变换避免 shader 端矩阵问题
 
 int Nx() { return _ResX + 1; }
@@ -69,7 +70,10 @@ float SampleSdfLocal(float3 p)
 
 float3 SdfGradient(float3 p)
 {
-    float eps = min(_Size.x / _ResX, _Size.y / _ResY) * 0.5;
+    // 梯度采样半径：跨 _NormalSmooth 格。取值>1 让法线在更大邻域平均，
+    // 抹平体素阶梯(尤其侵蚀逐格累加造成的硜齿), 不动几何/精度/塔陷逻辑。
+    float cell = min(_Size.x / _ResX, _Size.y / _ResY);
+    float eps = cell * max(_NormalSmooth, 0.5);
     float gx = SampleSdfLocal(p + float3(eps,0,0)) - SampleSdfLocal(p - float3(eps,0,0));
     float gy = SampleSdfLocal(p + float3(0,eps,0)) - SampleSdfLocal(p - float3(0,eps,0));
     float gz = SampleSdfLocal(p + float3(0,0,eps)) - SampleSdfLocal(p - float3(0,0,eps));

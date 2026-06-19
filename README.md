@@ -72,9 +72,19 @@ Quest 3 MR 沙堡模拟器原型 — SDF 体积融合 + 海浪侵蚀
 - [ ] 落地融合回沙堆
 - [ ] 3D 安息角塌陷（替代旧高度场 slump）
 
+### ✅ C8.5: GPU 渲染管线
+- [x] GPU Marching Cubes 渲染（compute shader，DrawProcedural）
+- [x] **职责划分**：CPU 算 SDF（base+侵蚀+塌陷，唯一真相），GPU 只做 MC 渲染
+  - base（含球/盒/样条/bakedmesh）仅 piece 增删时 CPU 算一次，上传 GPU
+  - 侵蚀/塌陷/collider 全读 CPU `_sdf`，保证正确；每帧 MC 在 GPU
+- [x] GPU 顶点回读重建 MeshCollider（碰撞与 GPU 显示一致；Quest 端待改 AsyncGPUReadback）
+- [x] **法线平滑**：SDF 梯度采样半径可调（`normalSmooth`），抹除侵蚀态边缘锯齿
+- [x] F2 运行时切换 GPU/CPU 路径（调试对照 + GPU 不兼容时降级）
+
 ### 🔲 C9: Quest 3 MR 移植
 - [x] 体积已是 40cm 桌面尺寸（C7.5 提前完成）
-- [ ] 升级 GPU Compute Shader MC 冲 2mm 精度
+- [x] GPU MC 渲染管线就绪（C8.5）
+- [ ] RebuildCollider 同步回读改 AsyncGPUReadback（避免 Quest 掉帧）
 - [ ] 手势交互替代鼠标
 - [ ] Passthrough + 沙堡渲染融合
 - [ ] MR 桌面锚定
@@ -99,6 +109,7 @@ Quest 3 MR 沙堡模拟器原型 — SDF 体积融合 + 海浪侵蚀
 | R 按住 | 旋转预览 |
 | V 按住 | 浇水（湿沙抗侵蚀） |
 | G | 样条沙堤模式（左键加点, 回车/右键完成, Backspace撤销, Esc取消） |
+| F2 | 切换 GPU/CPU 渲染路径（对照/降级用） |
 | 右键拖 | 旋转视角 |
 | 滚轮 | 缩放视角 |
 | F1 | 显示/隐藏 Debug UI |
@@ -132,20 +143,39 @@ Unity 单位仍 1=1m，整个场景按真实桌面尺寸建。
 
 ```
 SandcastleBootstrap (Awake)
-├── SdfVolume (100×60×100 体素 @ 4mm, 40×24×40cm)
-│   ├── 初始沙层 (8cm 厚实心 box SDF)
-│   ├── SdfPiece[] (球/Box/BakedMesh)
-│   ├── _sdfBase[] (沙层+piece 基础 SDF)
+├── SdfVolume 【CPU 核心: 唯一 SDF 真相】
+│   ├── 初始沙层 (实心 box SDF)
+│   ├── SdfPiece[] (球/Box/Spline/BakedMesh)
+│   ├── _sdfBase[] (沙层+piece 基础 SDF, 仅 piece 增删时重算)
 │   ├── _erosion[] (侵蚀累积场)
 │   ├── _wetness[] (湿度场, 湿沙抗侵蚀)
+│   ├── _sdf[] = base + erosion (最终场, 供塌陷/查询)
 │   ├── RemoveUnsupported (连通域检测, 无支撑立即移除)
-│   └── Marching Cubes → Mesh
+│   └── ExtractMesh (CPU MC — 仅 CPU 渲染路径/降级用)
+├── GpuSandRenderer 【GPU 渲染路径, 默认开】
+│   ├── 上传 _sdfBase/_erosion → GPU
+│   ├── SandMarchingCubes.compute (每帧 GPU MC → 顶点 buffer)
+│   ├── SdfGradient 法线 (normalSmooth 可调平滑)
+│   ├── DrawProcedural 渲染 (Sand_GPU.shader)
+│   └── RebuildCollider (回读顶点重建 MeshCollider)
 ├── SimpleWave (海面视觉)
 ├── WaveSimulator (潮汐 + 侵蚀驱动 + 塑塌)
 ├── ErosionParticles (碎屑粒子)
 ├── SdfPiecePlacer (唯一放置器)
 └── OrbitCamera
 ```
+
+## 精度与渲染
+
+- **体素精度**由 SdfVolume.resolution 决定(当前代码默认 96×32×96 @ size 5×1.5×5m ≈ 52mm/格)。
+  几何精度上限在体素场, GPU 只是把这份场渲染出来——提 GPU 采样密度不会凭空增加几何细节。
+- **边缘硜齿**主要来自法线(SDF 梯度)贴着体素阶梯跳变, 侵蚀逐格累加时阶梯更陡。
+  解法是加大梯度采样半径 `normalSmooth`(GpuSandRenderer 上可调, 1.5~2.5 推荐), 不动几何/精度。
+- **更高视觉细节**应走法线贴图/细节纹理(在 Sand_GPU.shader 的 frag), 而非堆体素。
+  全局 0.5mm 均匀体素 ≈ 1.5 亿个, 内存/算力 Quest 3 扣不住, 不可行。
+
+> ⚠ 分辨率不一致: 上图及坐标系章节的 "100×60×100 @ 4mm / 40cm" 是 C7.5 重构目标, 但
+> 当前代码 SandcastleBootstrap 未覆写 SdfVolume 默认值(5m / 96×32×96)。迁移未落地。
 
 > 高度场 SandTerrain / PiecePlacer / CastlePiece 已于 C7.5 重构退场，
 > 沙地改为全局有厚度 SDF。高度场无法表达厚度/掘空/悬挑，不适合本需求。

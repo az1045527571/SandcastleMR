@@ -30,6 +30,9 @@ namespace Sandcastle
         public bool useGpu = true;
         [Tooltip("顶点容量系数（cube 数 × 此值）")]
         public float vertCapacityFactor = 5f;
+        [Tooltip("法线平滑度(以体素计的梯度采样半径)。越大越平滑, 抹除侵蚀硜齿; 太大会糊掉棱角。1.5~2.5 推荐。")]
+        [Range(0.5f, 4f)]
+        public float normalSmooth = 1.8f;
 
         private SdfVolume _vol;
         private int _resX, _resY, _resZ, _nx, _ny, _nz, _voxCount, _cubeCount;
@@ -146,6 +149,7 @@ namespace Sandcastle
             compute.SetFloat("_SandThickness", _vol.sandLayerThickness);
             compute.SetFloat("_SandInset", _vol.sandInset);
             compute.SetFloat("_IsoLevel", _vol.isoLevel);
+            compute.SetFloat("_NormalSmooth", normalSmooth);
             // MarchingCubes 绑定 (base 由 CPU 算好直接上传, 不再跑 GPU EvaluateBase kernel)
             compute.SetBuffer(_kMC, "_SdfBaseBuf", _sdfBaseBuf);
             compute.SetBuffer(_kMC, "_ErosionBuf", _erosionBuf);
@@ -161,6 +165,7 @@ namespace Sandcastle
         void Rebuild()
         {
             compute.SetMatrix("_SandL2W", transform.localToWorldMatrix);
+            compute.SetFloat("_NormalSmooth", normalSmooth);  // 每帧设, 支持运行时拖滑块调平滑度
 
             // base(含 piece+bakedmesh) 由 CPU 算好, 这里直接上传。
             // 不再跑 GPU EvaluateBase kernel(它只支持球/盒/样条, bakedmesh 会退化成球)。
