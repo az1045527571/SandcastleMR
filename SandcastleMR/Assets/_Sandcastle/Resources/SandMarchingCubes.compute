@@ -1,0 +1,197 @@
+// GPU 沙子 Marching Cubes (阶段一)
+// 两个 kernel:
+//   EvaluateBase  - 算地形基底沙层 box SDF 写入 _SdfBaseBuf (piece 合成阶段二再加)
+//   MarchingCubes - 查表 MC, 从 sdf=base+erosion 生成三角形顶点 append 到 _VertBuf
+// 参考 docs/GPU_SAND_PHASE1.md
+#pragma kernel EvaluateBase
+#pragma kernel MarchingCubes
+
+// ---- 顶点结构 (必须和 C# / shader 内存布局一致: float3+float3+float = 7 floats = 28B) ----
+struct Vert
+{
+    float3 pos;     // 体积本地坐标 (中心原点, 米)
+    float3 normal;
+    float  wet;
+};
+
+// ---- 体素场 ----
+RWStructuredBuffer<float> _SdfBaseBuf;
+StructuredBuffer<float>   _ErosionBuf;
+StructuredBuffer<float>   _WetnessBuf;
+
+// ---- MC 查找表 ----
+StructuredBuffer<int> _EdgeTable;        // [256]
+StructuredBuffer<int> _TriTable;         // [256*16] 展平
+StructuredBuffer<int> _EdgeVertexIndex;  // [12*2] 展平
+StructuredBuffer<int> _VertexOffset;     // [8*3] 展平
+
+// ---- 输出 ----
+AppendStructuredBuffer<Vert> _VertBuf;
+
+// ---- 参数 ----
+int _ResX, _ResY, _ResZ;          // cube 分辨率 (96,32,96)
+float3 _Size;                      // 体积物理尺寸 (米)
+float _SandThickness;
+float _SandInset;
+float _IsoLevel;
+
+int Nx() { return _ResX + 1; }
+int Ny() { return _ResY + 1; }
+int Nz() { return _ResZ + 1; }
+int Index(int x, int y, int z) { return x + y * Nx() + z * Nx() * Ny(); }
+
+// box SDF (体积本地坐标, 角落原点)
+float SdfBoxLocal(float3 p, float3 center, float3 half)
+{
+    float3 q = abs(p - center) - half;
+    float outside = length(max(q, 0.0));
+    float inside = min(max(q.x, max(q.y, q.z)), 0.0);
+    return outside + inside;
+}
+
+[numthreads(4,4,4)]
+void EvaluateBase(uint3 id : SV_DispatchThreadID)
+{
+    int x = (int)id.x, y = (int)id.y, z = (int)id.z;
+    if (x >= Nx() || y >= Ny() || z >= Nz()) return;
+
+    float dx = _Size.x / _ResX;
+    float dy = _Size.y / _ResY;
+    float dz = _Size.z / _ResZ;
+    float3 localPos = float3(x * dx, y * dy, z * dz);
+
+    float3 boxCenter = float3(_Size.x * 0.5, _SandThickness * 0.5, _Size.z * 0.5);
+    float3 boxHalf   = float3(_Size.x * 0.5 - _SandInset, _SandThickness * 0.5, _Size.z * 0.5 - _SandInset);
+    float d = SdfBoxLocal(localPos, boxCenter, boxHalf);
+
+    // 体积最外一圈强制为空气, 保证 MC 封边
+    bool atBorder = (x == 0 || x == Nx()-1 || y == 0 || y == Ny()-1 || z == 0 || z == Nz()-1);
+    if (atBorder) d = max(d, 0.01);
+
+    _SdfBaseBuf[Index(x, y, z)] = d;
+}
+
+// 最终 sdf = base + erosion
+float SampleSdf(int x, int y, int z)
+{
+    int i = Index(x, y, z);
+    return _SdfBaseBuf[i] + _ErosionBuf[i];
+}
+
+// 三线性 sdf 采样 (体积本地坐标, 角落原点, 单位米)
+float SampleSdfLocal(float3 p)
+{
+    float dx = _Size.x / _ResX, dy = _Size.y / _ResY, dz = _Size.z / _ResZ;
+    float fx = clamp(p.x / dx, 0, _ResX);
+    float fy = clamp(p.y / dy, 0, _ResY);
+    float fz = clamp(p.z / dz, 0, _ResZ);
+    int x0 = (int)floor(fx), y0 = (int)floor(fy), z0 = (int)floor(fz);
+    int x1 = min(x0+1, _ResX), y1 = min(y0+1, _ResY), z1 = min(z0+1, _ResZ);
+    float tx = fx - x0, ty = fy - y0, tz = fz - z0;
+    float c000 = SampleSdf(x0,y0,z0), c100 = SampleSdf(x1,y0,z0);
+    float c010 = SampleSdf(x0,y1,z0), c110 = SampleSdf(x1,y1,z0);
+    float c001 = SampleSdf(x0,y0,z1), c101 = SampleSdf(x1,y0,z1);
+    float c011 = SampleSdf(x0,y1,z1), c111 = SampleSdf(x1,y1,z1);
+    float c00 = lerp(c000,c100,tx), c10 = lerp(c010,c110,tx);
+    float c01 = lerp(c001,c101,tx), c11 = lerp(c011,c111,tx);
+    return lerp(lerp(c00,c10,ty), lerp(c01,c11,ty), tz);
+}
+
+float3 SdfGradient(float3 p)
+{
+    float eps = min(_Size.x / _ResX, _Size.y / _ResY) * 0.5;
+    float gx = SampleSdfLocal(p + float3(eps,0,0)) - SampleSdfLocal(p - float3(eps,0,0));
+    float gy = SampleSdfLocal(p + float3(0,eps,0)) - SampleSdfLocal(p - float3(0,eps,0));
+    float gz = SampleSdfLocal(p + float3(0,0,eps)) - SampleSdfLocal(p - float3(0,0,eps));
+    float3 g = float3(gx, gy, gz);
+    float m = length(g);
+    if (m < 1e-6) return float3(0,1,0);
+    return g / m;
+}
+
+// cube 4 角平均湿度
+float SampleWetnessCube(int x, int y, int z)
+{
+    float s = 0;
+    s += _WetnessBuf[Index(x, y, z)];
+    s += _WetnessBuf[Index(min(x+1,_ResX), y, z)];
+    s += _WetnessBuf[Index(x, min(y+1,_ResY), z)];
+    s += _WetnessBuf[Index(x, y, min(z+1,_ResZ))];
+    return saturate(s * 0.25);
+}
+
+[numthreads(4,4,4)]
+void MarchingCubes(uint3 id : SV_DispatchThreadID)
+{
+    int x = (int)id.x, y = (int)id.y, z = (int)id.z;
+    if (x >= _ResX || y >= _ResY || z >= _ResZ) return;
+
+    float dx = _Size.x / _ResX, dy = _Size.y / _ResY, dz = _Size.z / _ResZ;
+    float3 sizeHalf = _Size * 0.5;
+
+    // 8 角 sdf 值
+    float cubeVal[8];
+    [unroll] for (int v = 0; v < 8; v++)
+    {
+        int vx = x + _VertexOffset[v*3+0];
+        int vy = y + _VertexOffset[v*3+1];
+        int vz = z + _VertexOffset[v*3+2];
+        cubeVal[v] = SampleSdf(vx, vy, vz);
+    }
+
+    // 配置 index
+    int ci = 0;
+    [unroll] for (int v2 = 0; v2 < 8; v2++)
+        if (cubeVal[v2] < _IsoLevel) ci |= (1 << v2);
+
+    int edgeMask = _EdgeTable[ci];
+    if (edgeMask == 0) return;
+
+    // 12 条边插值顶点 (体积本地坐标, 角落原点)
+    float3 edgeVert[12];
+    [unroll] for (int e = 0; e < 12; e++)
+    {
+        if ((edgeMask & (1 << e)) == 0) continue;
+        int a = _EdgeVertexIndex[e*2+0];
+        int b = _EdgeVertexIndex[e*2+1];
+        float va = cubeVal[a], vb = cubeVal[b];
+        float t = (abs(va - vb) < 1e-6) ? 0.5 : (_IsoLevel - va) / (vb - va);
+        float3 pa = float3((x + _VertexOffset[a*3+0]) * dx,
+                           (y + _VertexOffset[a*3+1]) * dy,
+                           (z + _VertexOffset[a*3+2]) * dz);
+        float3 pb = float3((x + _VertexOffset[b*3+0]) * dx,
+                           (y + _VertexOffset[b*3+1]) * dy,
+                           (z + _VertexOffset[b*3+2]) * dz);
+        edgeVert[e] = lerp(pa, pb, t);
+    }
+
+    float wet = SampleWetnessCube(x, y, z);
+
+    // 输出三角形 (TriTable 每行 16, 每 3 个边索引一个三角)
+    int rowBase = ci * 16;
+    [unroll] for (int t2 = 0; t2 < 16; t2 += 3)
+    {
+        int i0 = _TriTable[rowBase + t2];
+        if (i0 < 0) break;
+        int i1 = _TriTable[rowBase + t2 + 1];
+        int i2 = _TriTable[rowBase + t2 + 2];
+
+        // 本地角落原点 -> mesh 本地中心原点 (与 CPU 版一致)
+        float3 p0 = edgeVert[i0] - sizeHalf;
+        float3 p1 = edgeVert[i1] - sizeHalf;
+        float3 p2 = edgeVert[i2] - sizeHalf;
+
+        // 法线 = SDF 梯度 (传入角落原点坐标)
+        float3 n0 = SdfGradient(edgeVert[i0]);
+        float3 n1 = SdfGradient(edgeVert[i1]);
+        float3 n2 = SdfGradient(edgeVert[i2]);
+
+        // 绕序翻转 (与 CPU 版一致: 0,2,1)
+        Vert va2; va2.pos = p0; va2.normal = n0; va2.wet = wet;
+        Vert vb2; vb2.pos = p2; vb2.normal = n2; vb2.wet = wet;
+        Vert vc2; vc2.pos = p1; vc2.normal = n1; vc2.wet = wet;
+        _VertBuf.Append(va2);
+        _VertBuf.Append(vb2);
+        _VertBuf.Append(vc2);
+    }
+}

@@ -88,6 +88,8 @@ public class SandcastleBootstrap : MonoBehaviour
         var volume = sdfGo.AddComponent<SdfVolume>();
         // size 用 SdfVolume 默认 (5,1.5,5)，不覆写
         sdfGo.AddComponent<SdfVolumeBoundsVisualizer>();
+        // GPU 沙子渲染器（阶段一）：G 键切换 GPU/CPU 路径对照
+        sdfGo.AddComponent<GpuSandRenderer>();
 
         // 兵底平面 collider（仅在挖穿见底时兑底），降到沙层底部 世界 Y≈-0.24
         // 真实沙面由 SDF mesh 的 MeshCollider 提供，铲子/放置射线打在真实沙形上
