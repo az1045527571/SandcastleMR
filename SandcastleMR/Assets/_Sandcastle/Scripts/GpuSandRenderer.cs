@@ -85,10 +85,12 @@ namespace Sandcastle
             _voxCount = _nx * _ny * _nz;
             _cubeCount = _resX * _resY * _resZ;
 
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             AllocBuffers();
             UploadTables();
             SetComputeParams();
             ApplyRouting();
+            Debug.Log($"[启动计时] GpuSandRenderer 初始化(buffer分配+表上传): {sw.ElapsedMilliseconds} ms");
         }
 
         void AllocBuffers()

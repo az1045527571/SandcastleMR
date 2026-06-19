@@ -93,7 +93,9 @@ namespace Sandcastle
         void Start()
         {
             // 初始建一次：填出有厚度的沙层
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             RebuildMesh();
+            Debug.Log($"[启动计时] SdfVolume 首次建场(含首次Burst编译): {sw.ElapsedMilliseconds} ms");
         }
 
         // 局部重算：piece 增删时记录受影响世界范围, EvaluateBase 只重算该区(74ms→个位数ms)。
