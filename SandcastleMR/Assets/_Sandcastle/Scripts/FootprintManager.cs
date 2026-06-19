@@ -50,6 +50,12 @@ namespace Sandcastle
         {
             _cam = Camera.main;
             _volume = FindObjectOfType<SdfVolume>();
+            // 加载脚印法线贴图并设为全局
+            var tex = Resources.Load<Texture2D>("footprint_normal");
+            if (tex != null)
+                Shader.SetGlobalTexture("_FootprintTex", tex);
+            else
+                Debug.LogWarning("[Footprint] 未找到 Resources/footprint_normal");
             Shader.SetGlobalFloat("_FootprintLength", length);
             Shader.SetGlobalFloat("_FootprintWidth", width);
             Shader.SetGlobalFloat("_FootprintDepth", depth);

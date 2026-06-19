@@ -49,6 +49,9 @@ Shader "Sandcastle/Sand"
             float _FootprintWidth;   // 脚印宽半轴（米）
             float _FootprintDepth;   // 法线扰动强度
 
+            // 脚印法线贴图（全局，单只赤脚贴花）
+            TEXTURE2D(_FootprintTex); SAMPLER(sampler_FootprintTex);
+
             struct Attributes
             {
                 float4 positionOS : POSITION;
@@ -155,12 +158,12 @@ Shader "Sandcastle/Sand"
                 // Lambert 光照
                 float3 N = normalize(IN.normalWS);
 
-                // ===== 脚印法线扰动（仅朝上沙面）=====
+                // ===== 脚印法线扰动（采样贴图，仅朝上沙面）=====
                 float upMask = saturate(N.y * 2.0 - 0.5); // N.y 越向上越明显
                 if (upMask > 0.001 && _FootprintCount > 0)
                 {
                     float2 wxz = IN.positionWS.xz;
-                    float2 acc = float2(0,0);
+                    float2 accXZ = float2(0,0);
                     [loop] for (int fi = 0; fi < MAX_FOOTPRINTS; fi++)
                     {
                         if (fi >= _FootprintCount) break;
@@ -168,19 +171,18 @@ Shader "Sandcastle/Sand"
                         float2 d = wxz - fp.xy;
                         float ca = cos(-fp.z), sa = sin(-fp.z);
                         float2 lp = float2(d.x * ca - d.y * sa, d.x * sa + d.y * ca); // 脚印本地
-                        float2 e = float2(lp.x / max(_FootprintLength, 1e-4), lp.y / max(_FootprintWidth, 1e-4));
-                        float rr = length(e);
-                        if (rr < 1.0)
-                        {
-                            // 径向梯度（本地）→ 旋回世界 XZ
-                            float2 gradL = float2(e.x / max(_FootprintLength,1e-4), e.y / max(_FootprintWidth,1e-4));
-                            float2 gradW = float2(gradL.x * ca + gradL.y * sa, -gradL.x * sa + gradL.y * ca);
-                            float w = fp.w * smoothstep(1.0, 0.0, rr); // 边缘淑出 + 强度
-                            acc += gradW * w;
-                        }
+                        // 本地 → UV (脚印范围 [-L,L]x[-W,W] 映射到 [0,1])
+                        float2 uv = float2(lp.x / (2.0 * _FootprintWidth) + 0.5,
+                                           lp.y / (2.0 * _FootprintLength) + 0.5);
+                        if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) continue;
+                        float4 tex = SAMPLE_TEXTURE2D(_FootprintTex, sampler_FootprintTex, uv);
+                        // 贴图是 OpenGL 法线图: rg ∈[0,1] → 切线空间 xy。alpha=脚印遮罩
+                        float2 nTan = (tex.rg * 2.0 - 1.0) * tex.a * fp.w;
+                        // 切线空间 xy 旋回世界 XZ（按脚印朝向）
+                        float cf = cos(fp.z), sf = sin(fp.z);
+                        accXZ += float2(nTan.x * cf + nTan.y * sf, -nTan.x * sf + nTan.y * cf);
                     }
-                    // 法线向坑内倾斜，产生凹陷的明暗
-                    N = normalize(N - float3(acc.x, 0, acc.y) * _FootprintDepth * upMask);
+                    N = normalize(N + float3(accXZ.x, 0, accXZ.y) * _FootprintDepth * upMask);
                 }
 
                 Light mainLight = GetMainLight();
