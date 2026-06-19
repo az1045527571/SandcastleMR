@@ -36,6 +36,7 @@ namespace Sandcastle
             public Vector2 pos;   // 世界 XZ
             public float yaw;     // 朝向（弧度）
             public float age;     // 已存活秒
+            public bool isLeft;   // 左脚/右脚
         }
 
         private readonly List<Footprint> _prints = new List<Footprint>();
@@ -50,12 +51,13 @@ namespace Sandcastle
         {
             _cam = Camera.main;
             _volume = FindObjectOfType<SdfVolume>();
-            // 加载脚印法线贴图并设为全局
-            var tex = Resources.Load<Texture2D>("footprint_normal");
-            if (tex != null)
-                Shader.SetGlobalTexture("_FootprintTex", tex);
-            else
-                Debug.LogWarning("[Footprint] 未找到 Resources/footprint_normal");
+            // 加载左/右脚印法线贴图并设为全局
+            var texR = Resources.Load<Texture2D>("footprint_R_normal");
+            var texL = Resources.Load<Texture2D>("footprint_L_normal");
+            if (texR != null) Shader.SetGlobalTexture("_FootprintTexR", texR);
+            if (texL != null) Shader.SetGlobalTexture("_FootprintTexL", texL);
+            if (texR == null || texL == null)
+                Debug.LogWarning("[Footprint] 未找到 Resources/footprint_R_normal 或 _L_normal");
             Shader.SetGlobalFloat("_FootprintLength", length);
             Shader.SetGlobalFloat("_FootprintWidth", width);
             Shader.SetGlobalFloat("_FootprintDepth", depth);
@@ -85,8 +87,8 @@ namespace Sandcastle
                             float yaw = Mathf.Atan2(dir.x, dir.y); // 与世界 +Z 的夹角
                             // 左右脚横向偏移（垂直于前进方向）
                             Vector2 side = new Vector2(dir.y, -dir.x) * (stride * 0.5f) * (_leftFoot ? 1f : -1f);
+                            AddPrint(xz + side, yaw, _leftFoot);
                             _leftFoot = !_leftFoot;
-                            AddPrint(xz + side, yaw);
                             _lastXZ = xz;
                         }
                     }
@@ -109,11 +111,11 @@ namespace Sandcastle
             UploadToShader();
         }
 
-        void AddPrint(Vector2 xz, float yaw)
+        void AddPrint(Vector2 xz, float yaw, bool isLeft)
         {
             if (_prints.Count >= MaxFootprints)
                 _prints.RemoveAt(0); // 顶掉最旧的
-            _prints.Add(new Footprint { pos = xz, yaw = yaw, age = 0f });
+            _prints.Add(new Footprint { pos = xz, yaw = yaw, age = 0f, isLeft = isLeft });
         }
 
         void UploadToShader()
@@ -124,6 +126,8 @@ namespace Sandcastle
                 var p = _prints[i];
                 // 强度：随年龄线性淡出
                 float strength = 1f - Mathf.Clamp01(p.age / lifetime);
+                // w 符号区分左/右脚：正=右脚, 负=左脚
+                if (p.isLeft) strength = -strength;
                 _buf[i] = new Vector4(p.pos.x, p.pos.y, p.yaw, strength);
             }
             Shader.SetGlobalVectorArray("_Footprints", _buf);

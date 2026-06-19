@@ -49,8 +49,9 @@ Shader "Sandcastle/Sand"
             float _FootprintWidth;   // 脚印宽半轴（米）
             float _FootprintDepth;   // 法线扰动强度
 
-            // 脚印法线贴图（全局，单只赤脚贴花）
-            TEXTURE2D(_FootprintTex); SAMPLER(sampler_FootprintTex);
+            // 脚印法线贴图（全局，左/右赤脚贴花）
+            TEXTURE2D(_FootprintTexR); SAMPLER(sampler_FootprintTexR);
+            TEXTURE2D(_FootprintTexL); SAMPLER(sampler_FootprintTexL);
 
             struct Attributes
             {
@@ -175,9 +176,13 @@ Shader "Sandcastle/Sand"
                         float2 uv = float2(lp.x / (2.0 * _FootprintWidth) + 0.5,
                                            lp.y / (2.0 * _FootprintLength) + 0.5);
                         if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) continue;
-                        float4 tex = SAMPLE_TEXTURE2D(_FootprintTex, sampler_FootprintTex, uv);
+                        // fp.w 符号区分左/右脚，绝对值为强度
+                        float strength = abs(fp.w);
+                        float4 tex = (fp.w >= 0.0)
+                            ? SAMPLE_TEXTURE2D(_FootprintTexR, sampler_FootprintTexR, uv)
+                            : SAMPLE_TEXTURE2D(_FootprintTexL, sampler_FootprintTexL, uv);
                         // 贴图是 OpenGL 法线图: rg ∈[0,1] → 切线空间 xy。alpha=脚印遮罩
-                        float2 nTan = (tex.rg * 2.0 - 1.0) * tex.a * fp.w;
+                        float2 nTan = (tex.rg * 2.0 - 1.0) * tex.a * strength;
                         // 切线空间 xy 旋回世界 XZ（按脚印朝向）
                         float cf = cos(fp.z), sf = sin(fp.z);
                         accXZ += float2(nTan.x * cf + nTan.y * sf, -nTan.x * sf + nTan.y * cf);
