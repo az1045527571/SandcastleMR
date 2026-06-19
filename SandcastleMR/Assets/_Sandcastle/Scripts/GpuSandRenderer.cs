@@ -28,8 +28,8 @@ namespace Sandcastle
         public KeyCode toggleKey = KeyCode.F2;
         [Tooltip("是否一开始就用 GPU 路径")]
         public bool useGpu = true;
-        [Tooltip("顶点容量系数（cube 数 × 此值）")]
-        public float vertCapacityFactor = 5f;
+        [Tooltip("顶点容量系数（cube 数 × 此值）。高分辨率时表面cube占比小, 2.5 足够且省显存。")]
+        public float vertCapacityFactor = 2.5f;
         [Tooltip("法线平滑度(以体素计的梯度采样半径)。越大越平滑, 抹除侵蚀硜齿; 太大会糊掉棱角。1.5~2.5 推荐。")]
         [Range(0.5f, 4f)]
         public float normalSmooth = 1.8f;
