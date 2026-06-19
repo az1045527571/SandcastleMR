@@ -57,17 +57,27 @@ Quest 3 MR 沙堡模拟器原型 — SDF 体积融合 + 海浪侵蚀
 - [x] 侵蚀过程可视：浪头期间阶段性重建 mesh（rebuildInterval），化开连贯
 - [x] 玩家浇水：按住 V 给鼠标指向的沙加湿（护城河/加固）
 
+### ✅ C7.5: 重构为 40cm 全局 SDF 沙箱
+- [x] 场景从 20m 重建为 40×40cm 桌面真实尺寸
+- [x] 废除高度场 SandTerrain（无法表达厚度/掘空/悬挑）
+- [x] 沙地改为全局有厚度 SDF（8cm 实心沙层 box），一体无接缝
+- [x] SDF 分辨率 100×60×100 = 4mm/格（CPU MC 可交互）
+- [x] 删除旧模式 PiecePlacer/CastlePiece/PlacerModeSwitcher，SDF 为唯一系统
+- [x] 放置/浇水/相机/海浪参数全部对齐 cm 尺度
+
 ### 🔲 C8: 塌陷物理
-- [ ] 连通域检测（flood fill）
-- [ ] 断裂碎块提取 mesh
+- [x] 连通域检测（flood fill），无支撑残块立即移除 + 掉渣粒子
+- [ ] 断裂碎块提取独立 mesh
 - [ ] Rigidbody 自由落体
 - [ ] 落地融合回沙堆
+- [ ] 3D 安息角塌陷（替代旧高度场 slump）
 
 ### 🔲 C9: Quest 3 MR 移植
-- [ ] 体积缩到 40cm 桌面（MR 桌面锚定）
+- [x] 体积已是 40cm 桌面尺寸（C7.5 提前完成）
+- [ ] 升级 GPU Compute Shader MC 冲 2mm 精度
 - [ ] 手势交互替代鼠标
 - [ ] Passthrough + 沙堡渲染融合
-- [ ] 性能优化（Compute Shader MC / 降分辨率）
+- [ ] MR 桌面锚定
 
 ### 🔲 C10: 美术与氛围
 - [ ] 水面 shader（折射/焦散）
@@ -81,8 +91,6 @@ Quest 3 MR 沙堡模拟器原型 — SDF 体积融合 + 海浪侵蚀
 
 | 按键 | 功能 |
 |------|------|
-| 1 | 旧模式（高度场构件） |
-| 2 | SDF 模式 |
 | B | SDF 球 |
 | M | SDF 烘焙模型 |
 | 左键 | 放置 |
@@ -96,15 +104,18 @@ Quest 3 MR 沙堡模拟器原型 — SDF 体积融合 + 海浪侵蚀
 
 ---
 
-## 坐标系
+## 坐标系（40cm 桌面沙箱）
 
 | 元素 | 世界 Y |
 |------|--------|
-| 沙地基准 | -0.10 |
-| 海平面（静止） | -0.08 |
-| 小岛顶 | +0.12 |
-| SDF 体积中心 | +0.50 |
-| SDF 体积范围 | -0.25 ~ +1.25 |
+| 沙箱底 | 0.00 |
+| 沙层表面（初始 8cm） | +0.08 |
+| 静止海面 | +0.04 |
+| SDF 体积中心 | +0.12 |
+| SDF 体积范围 | 0.00 ~ +0.24 |
+
+沙箱：40×40cm，SDF 分辨率 100×60×100 体素 = **4mm/格**。
+Unity 单位仍 1=1m，整个场景按真实桌面尺寸建。
 
 ---
 
@@ -120,14 +131,20 @@ Quest 3 MR 沙堡模拟器原型 — SDF 体积融合 + 海浪侵蚀
 
 ```
 SandcastleBootstrap (Awake)
-├── SandTerrain (高度场 128×128)
-├── SdfVolume (96×32×96 体素)
+├── SdfVolume (100×60×100 体素 @ 4mm, 40×24×40cm)
+│   ├── 初始沙层 (8cm 厚实心 box SDF)
 │   ├── SdfPiece[] (球/Box/BakedMesh)
-│   ├── _sdfBase[] (地形+piece 基础 SDF)
+│   ├── _sdfBase[] (沙层+piece 基础 SDF)
 │   ├── _erosion[] (侵蚀累积场)
+│   ├── _wetness[] (湿度场, 湿沙抗侵蚀)
+│   ├── RemoveUnsupported (连通域检测, 无支撑立即移除)
 │   └── Marching Cubes → Mesh
 ├── SimpleWave (海面视觉)
-├── WaveSimulator (潮汐 + 侵蚀驱动)
-├── SdfPiecePlacer (放置器)
+├── WaveSimulator (潮汐 + 侵蚀驱动 + 塑塌)
+├── ErosionParticles (碎屑粒子)
+├── SdfPiecePlacer (唯一放置器)
 └── OrbitCamera
 ```
+
+> 高度场 SandTerrain / PiecePlacer / CastlePiece 已于 C7.5 重构退场，
+> 沙地改为全局有厚度 SDF。高度场无法表达厚度/掘空/悬挑，不适合本需求。

@@ -13,7 +13,7 @@ namespace Sandcastle
         [Tooltip("每个侵蚀点喷出的粒子数")]
         public int particlesPerPoint = 2;
         [Tooltip("碎屑初速度（米/秒）")]
-        public float driftSpeed = 0.15f;
+        public float driftSpeed = 0.03f;
         public Color sandColor = new Color(0.85f, 0.74f, 0.55f, 1f);
 
         private ParticleSystem _ps;
@@ -34,7 +34,7 @@ namespace Sandcastle
             main.loop = false;
             main.playOnAwake = false;
             main.startLifetime = 0.8f;
-            main.startSize = 0.012f;
+            main.startSize = 0.003f;
             main.startSpeed = 0f;          // 速度由 Emit 时手动给
             main.startColor = sandColor;
             main.gravityModifier = 0.6f;   // 受重力下落
@@ -76,7 +76,7 @@ namespace Sandcastle
                     dir.y = Mathf.Abs(dir.y) * 0.5f + 0.2f;
                     ep.velocity = dir.normalized * driftSpeed * Random.Range(0.5f, 1.2f);
                     ep.startLifetime = Random.Range(0.5f, 1.0f);
-                    ep.startSize = Random.Range(0.008f, 0.016f);
+                    ep.startSize = Random.Range(0.002f, 0.005f);
                     ep.startColor = sandColor;
                     _ps.Emit(ep, 1);
                 }

@@ -18,9 +18,9 @@ using Sandcastle;
 public class SdfPiecePlacer : MonoBehaviour
 {
     [Header("Sphere 模式参数")]
-    public float defaultRadius = 0.5f;
-    public float minRadius = 0.05f;
-    public float maxRadius = 2f;
+    public float defaultRadius = 0.025f;
+    public float minRadius = 0.005f;
+    public float maxRadius = 0.08f;
 
     [Header("BakedMesh 模式参数")]
     public MeshSdfAsset[] bakedSdfList;
@@ -34,7 +34,7 @@ public class SdfPiecePlacer : MonoBehaviour
 
     [Header("浇水 (按住 V)")]
     [Tooltip("浇水半径（米）")]
-    public float wetRadius = 0.4f;
+    public float wetRadius = 0.04f;
     [Tooltip("每秒增加湿度")]
     public float wetPerSecond = 1.5f;
 
@@ -44,7 +44,6 @@ public class SdfPiecePlacer : MonoBehaviour
 
     private Camera _cam;
     private SdfVolume _volume;
-    private SandTerrain _terrain;
     private float _currentRadius;
     private float _currentBakedScale;
     private float _currentRotY;
@@ -54,7 +53,6 @@ public class SdfPiecePlacer : MonoBehaviour
     {
         _cam = Camera.main;
         _volume = FindObjectOfType<SdfVolume>();
-        _terrain = FindObjectOfType<SandTerrain>();
         _currentRadius = defaultRadius;
         _currentBakedScale = defaultBakedScale;
 
@@ -102,14 +100,14 @@ public class SdfPiecePlacer : MonoBehaviour
         if (Input.GetKey(KeyCode.Equals) || Input.GetKey(KeyCode.KeypadPlus))
         {
             if (_mode == Mode.Sphere)
-                _currentRadius = Mathf.Min(_currentRadius + 0.5f * Time.deltaTime, maxRadius);
+                _currentRadius = Mathf.Min(_currentRadius + 0.03f * Time.deltaTime, maxRadius);
             else
                 _currentBakedScale = Mathf.Min(_currentBakedScale + 1f * Time.deltaTime, maxBakedScale);
         }
         if (Input.GetKey(KeyCode.Minus) || Input.GetKey(KeyCode.KeypadMinus))
         {
             if (_mode == Mode.Sphere)
-                _currentRadius = Mathf.Max(_currentRadius - 0.5f * Time.deltaTime, minRadius);
+                _currentRadius = Mathf.Max(_currentRadius - 0.03f * Time.deltaTime, minRadius);
             else
                 _currentBakedScale = Mathf.Max(_currentBakedScale - 1f * Time.deltaTime, minBakedScale);
         }
@@ -126,8 +124,6 @@ public class SdfPiecePlacer : MonoBehaviour
             {
                 _volume.WetVolume(wetHit.point, wetRadius, wetPerSecond * Time.deltaTime);
                 _volume.RefreshWetnessVisual();
-                if (_terrain != null)
-                    _terrain.Wet(wetHit.point, wetRadius, wetPerSecond * Time.deltaTime);
             }
         }
 
@@ -154,11 +150,7 @@ public class SdfPiecePlacer : MonoBehaviour
 
     void Place(Vector3 pos)
     {
-        // 强制 Y 吸附到地形高度
-        if (_terrain != null)
-        {
-            pos.y = _terrain.SampleHeight(pos);
-        }
+        // 直接用射线命中点（SdfFloor / SDF mesh collider），不再依赖高度场
 
         // clamp XZ 到 SDF 体积范围
         if (_volume != null)
@@ -167,7 +159,7 @@ public class SdfPiecePlacer : MonoBehaviour
             Vector3 vSize = _volume.size;
             Vector3 vMin = vCenter - vSize * 0.5f;
             Vector3 vMax = vCenter + vSize * 0.5f;
-            float r = (_mode == Mode.Sphere) ? _currentRadius : 0.3f;
+            float r = (_mode == Mode.Sphere) ? _currentRadius : 0.03f;
             pos.x = Mathf.Clamp(pos.x, vMin.x + r, vMax.x - r);
             pos.z = Mathf.Clamp(pos.z, vMin.z + r, vMax.z - r);
         }
@@ -190,13 +182,6 @@ public class SdfPiecePlacer : MonoBehaviour
             go.transform.localScale = Vector3.one * _currentBakedScale;
         }
         piece.RegisterToVolume();
-
-        if (_terrain != null)
-        {
-            float pileR = _mode == Mode.Sphere ? _currentRadius * 1.5f : _currentBakedScale * 0.5f;
-            float pileH = _mode == Mode.Sphere ? _currentRadius * 0.4f : _currentBakedScale * 0.15f;
-            _terrain.Pile(pos, pileR, pileH);
-        }
     }
 
     void DeleteNearest(Ray ray)
@@ -212,7 +197,7 @@ public class SdfPiecePlacer : MonoBehaviour
                 nearest = p;
             }
         }
-        if (nearest != null && minDist < 0.5f)
+        if (nearest != null && minDist < 0.05f)
             Destroy(nearest.gameObject);
     }
 
@@ -265,10 +250,6 @@ public class SdfPiecePlacer : MonoBehaviour
     {
         if (_preview == null) return;
         _preview.SetActive(true);
-
-        // 预览也吸附到地形高度
-        if (_terrain != null)
-            pos.y = _terrain.SampleHeight(pos);
 
         _preview.transform.position = pos;
         _preview.transform.rotation = Quaternion.Euler(0, _currentRotY, 0);

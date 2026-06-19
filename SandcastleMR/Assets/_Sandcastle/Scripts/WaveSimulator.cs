@@ -13,10 +13,10 @@ namespace Sandcastle
     public class WaveSimulator : MonoBehaviour
     {
         [Header("水位")]
-        [Tooltip("基础水位（世界 Y）")]
-        public float baseWaterLevel = -0.08f;
+        [Tooltip("基础水位（世界 Y）。沙层表面在 0.08，水位默认略低于沙面")]
+        public float baseWaterLevel = 0.04f;
         [Tooltip("涨潮峰值水位（高于基础水位多少米）")]
-        public float waveAmplitude = 0.06f;
+        public float waveAmplitude = 0.05f;
 
         [Header("周期")]
         [Tooltip("涨潮周期（秒）")]
@@ -27,9 +27,9 @@ namespace Sandcastle
 
         [Header("侵蚀")]
         [Tooltip("浪头每秒侵蚀量（米）。SDF值往正方向加，表面后退")]
-        public float erodePerSecond = 0.02f;
+        public float erodePerSecond = 0.004f;
         [Tooltip("侵蚀作用范围: 离水位多少米内的体素受侵蚀")]
-        public float erodeBandHeight = 1.0f;
+        public float erodeBandHeight = 0.05f;
         [Tooltip("侵蚀过程中多久重建一次 mesh（秒）。越小衰减越连贯但越卡")]
         public float rebuildInterval = 0.25f;
 
@@ -40,7 +40,6 @@ namespace Sandcastle
         [Header("引用")]
         public SdfVolume sdfVolume;
         public SimpleWave simpleWave;
-        private SandTerrain _terrain;
 
         private float _t;
         private float _currentLevel;
@@ -55,7 +54,6 @@ namespace Sandcastle
         {
             if (sdfVolume == null) sdfVolume = FindObjectOfType<SdfVolume>();
             if (simpleWave == null) simpleWave = FindObjectOfType<SimpleWave>();
-            _terrain = FindObjectOfType<SandTerrain>();
             _particles = ErosionParticles.Create(transform);
             // 延迟一帧初始化，让 SimpleWave.Start 先完成定位
             StartCoroutine(InitWaterLevel());
@@ -64,10 +62,9 @@ namespace Sandcastle
         System.Collections.IEnumerator InitWaterLevel()
         {
             yield return null;
-            // baseWaterLevel 已经硬编码 -0.08，此处只初始化 shader
             _currentLevel = baseWaterLevel;
             Shader.SetGlobalFloat("_GlobalWaterY", baseWaterLevel);
-            Shader.SetGlobalFloat("_GlobalWetTransition", 0.05f);
+            Shader.SetGlobalFloat("_GlobalWetTransition", 0.02f);
             Debug.Log($"[Wave] 初始化: baseWaterLevel = {baseWaterLevel:F3}");
         }
 
@@ -89,7 +86,7 @@ namespace Sandcastle
             // 全局水位传给所有 Sand shader（顶点低Y会自动显示为湿沙）
             // 用当前真实水位，这样静止时湿沙线锁在静止水面，不会被峰值抬高
             Shader.SetGlobalFloat("_GlobalWaterY", _currentLevel);
-            Shader.SetGlobalFloat("_GlobalWetTransition", 0.05f);
+            Shader.SetGlobalFloat("_GlobalWetTransition", 0.02f);
 
             // 同步水面视觉
             if (simpleWave != null)
@@ -122,12 +119,6 @@ namespace Sandcastle
                         if (_particles != null) _particles.Emit(_collapsePoints);
                     }
                     _rebuildTimer = 0f;
-                }
-
-                // SandTerrain 也变湿（SDF 区域外的沙地）
-                if (_terrain != null)
-                {
-                    _terrain.Wet(Vector3.zero, _terrain.size * 0.5f, 0.5f);
                 }
             }
             else if (_eroding)

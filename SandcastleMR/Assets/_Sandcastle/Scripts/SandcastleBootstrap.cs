@@ -9,8 +9,9 @@ using Sandcastle;
 [DefaultExecutionOrder(-100)]
 public class SandcastleBootstrap : MonoBehaviour
 {
-    [Header("沙滩")]
-    public Vector2 beachSize = new Vector2(20f, 20f);
+    [Header("沙箱")]
+    [Tooltip("沙箱桌面尺寸（米）。默认 40×40cm")]
+    public Vector2 beachSize = new Vector2(0.4f, 0.4f);
     public Color sandColor = new Color(0.92f, 0.82f, 0.62f);
 
     [Header("光照")]
@@ -53,77 +54,47 @@ public class SandcastleBootstrap : MonoBehaviour
         RenderSettings.fog = true;
         RenderSettings.fogMode = FogMode.ExponentialSquared;
         RenderSettings.fogColor = equatorColor;
-        RenderSettings.fogDensity = 0.015f;
+        RenderSettings.fogDensity = 0.05f;
     }
 
     void BuildBeach()
     {
-        var beach = new GameObject("SandTerrain");
-        beach.transform.SetParent(transform, false);
-        beach.transform.localPosition = new Vector3(0f, -0.10f, 0f); // 沙地基准比海面低 10cm
-        var mf = beach.AddComponent<MeshFilter>();
-        var mr = beach.AddComponent<MeshRenderer>();
-        var mc = beach.AddComponent<MeshCollider>();
+        // 不再创建高度场 SandTerrain。沙地全部交给全局 SDF（有厚度的沙层）。
 
-        // 提前赋材质，避免 SandTerrain.Awake 创建重复材质
-        Shader sandShader = Shader.Find("Sandcastle/Sand");
-        Material mat;
-        if (sandShader != null)
-        {
-            mat = new Material(sandShader);
-            mat.SetColor("_BaseColor", sandColor);
-        }
-        else
-        {
-            mat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-            mat.SetColor("_BaseColor", sandColor);
-            mat.SetFloat("_Smoothness", 0.1f);
-        }
-        mr.sharedMaterial = mat;
-
-        var terrain = beach.AddComponent<SandTerrain>();
-        terrain.size = Mathf.Max(beachSize.x, beachSize.y);
-
-        // 挂上构件放置器
-        var placerGo = new GameObject("PiecePlacer");
-        placerGo.transform.SetParent(transform, false);
-        placerGo.AddComponent<PiecePlacer>();
+        // 构件放置器（旧高度场模式）已退场，全局 SDF 为唯一系统
 
         // Debug UI
         var dbgGo = new GameObject("DebugUI");
         dbgGo.transform.SetParent(transform, false);
         dbgGo.AddComponent<SandcastleDebugUI>();
 
-        // SDF 体积系统
+        // 全局 SDF 沙箱系统：中心 Y=0.12 (体积 0.24 高 → 世界 Y 0~0.24, 沙层 0~0.08)
         var sdfGo = new GameObject("SdfVolume");
         sdfGo.transform.SetParent(transform, false);
-        sdfGo.transform.localPosition = new Vector3(0f, 0.5f, 0f); // 中心Y=0.5, 范围-0.25~+1.25
+        sdfGo.transform.localPosition = new Vector3(0f, 0.12f, 0f);
         sdfGo.AddComponent<MeshFilter>();
         var sdfMr = sdfGo.AddComponent<MeshRenderer>();
         Shader sdfSandShader = Shader.Find("Sandcastle/Sand");
         if (sdfSandShader == null) sdfSandShader = Shader.Find("Universal Render Pipeline/Lit");
-        sdfMr.sharedMaterial = new Material(sdfSandShader);
-        sdfGo.AddComponent<SdfVolume>();
+        var sdfMat = new Material(sdfSandShader);
+        sdfMat.SetColor("_BaseColor", sandColor);
+        sdfMr.sharedMaterial = sdfMat;
+        var volume = sdfGo.AddComponent<SdfVolume>();
+        volume.size = new Vector3(beachSize.x, 0.24f, beachSize.y);
         sdfGo.AddComponent<SdfVolumeBoundsVisualizer>();
-        // sdfGo.AddComponent<CollapseDetector>(); // 暂停，后续用均匀侵蚀替代
 
-        // 在 SDF 体积底部加一个扁平 BoxCollider，用于接收射线放置球
+        // 沙层顶面 collider（供放置射线命中），位于沙层表面 世界 Y≈0.08
+        // 相对体积中心 0.12，沙面 0.08 → 局部 -0.04
         var sdfFloor = new GameObject("SdfFloor");
         sdfFloor.transform.SetParent(sdfGo.transform, false);
-        sdfFloor.transform.localPosition = new Vector3(0f, -0.38f, 0f); // 相对体积中心0.5, 即世界Y=0.12
+        sdfFloor.transform.localPosition = new Vector3(0f, -0.04f, 0f);
         var box = sdfFloor.AddComponent<BoxCollider>();
-        box.size = new Vector3(5f, 0.02f, 5f);
+        box.size = new Vector3(beachSize.x, 0.01f, beachSize.y);
 
-        // SDF 放置器（按 2 切换到 SDF 模式）
+        // SDF 放置器（唯一放置器，默认启用）
         var sdfPlacerGo = new GameObject("SdfPiecePlacer");
         sdfPlacerGo.transform.SetParent(transform, false);
-        var sdfPlacer = sdfPlacerGo.AddComponent<SdfPiecePlacer>();
-        sdfPlacer.enabled = false; // 默认关闭，按 2 开启
-
-        // 模式切换器
-        var switchGo = new GameObject("ModeSwitcher");
-        switchGo.transform.SetParent(transform, false);
-        switchGo.AddComponent<PlacerModeSwitcher>();
+        sdfPlacerGo.AddComponent<SdfPiecePlacer>();
     }
 
     void BuildWater()
@@ -151,13 +122,14 @@ public class SandcastleBootstrap : MonoBehaviour
         cam.clearFlags = CameraClearFlags.SolidColor;
         cam.backgroundColor = skyColor;
         cam.fieldOfView = 50f;
-        cam.nearClipPlane = 0.05f;
-        cam.farClipPlane = 200f;
+        cam.nearClipPlane = 0.01f;
+        cam.farClipPlane = 50f;
 
         var orbit = cam.GetComponent<OrbitCamera>();
         if (orbit == null) orbit = cam.gameObject.AddComponent<OrbitCamera>();
-        // 轨道相机不跟 Shift+滚轮冲突了，直接简化
-        orbit.targetPoint = Vector3.zero;
-        orbit.distance = 12f;
+        orbit.targetPoint = new Vector3(0f, 0.08f, 0f); // 看向沙面
+        orbit.distance = 0.6f;
+        orbit.minDistance = 0.15f;
+        orbit.maxDistance = 2f;
     }
 }

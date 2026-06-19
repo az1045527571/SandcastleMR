@@ -18,10 +18,18 @@ namespace Sandcastle
     public class SdfVolume : MonoBehaviour
     {
         [Header("体积")]
-        public Vector3 size = new Vector3(5f, 1.5f, 5f);
-        public int resolutionX = 96;
-        public int resolutionY = 32;
-        public int resolutionZ = 96;
+        [Tooltip("沙箱物理尺寸（米）。默认 40×24×40cm")]
+        public Vector3 size = new Vector3(0.4f, 0.24f, 0.4f);
+        [Tooltip("各轴体素数。100×60×100 @ 0.4m = 4mm/格")]
+        public int resolutionX = 100;
+        public int resolutionY = 60;
+        public int resolutionZ = 100;
+
+        [Header("初始沙层")]
+        [Tooltip("初始实心沙层厚度（米）。从体积底部算起")]
+        public float sandLayerThickness = 0.08f;
+        [Tooltip("沙层 XZ 向内缩多少（米），让 MC 能封住侧壁")]
+        public float sandInset = 0.0f;
 
         [Header("Smooth Union")]
         [Tooltip("smooth min 平滑系数。越大融合越柔和但会损失细节")]
@@ -30,11 +38,6 @@ namespace Sandcastle
         [Header("ISO 表面")]
         [Tooltip("等值面阈值。0 = SDF 表面")]
         public float isoLevel = 0f;
-
-        [Header("地形融入")]
-        [Tooltip("是否将 SandTerrain 高度场作为基础 SDF")]
-        public bool includeTerrain = true;
-        public float terrainSmoothK = 0.15f;
 
         [Header("侵蚀")]
         [Tooltip("湿沙抗侵蚀强度。0=湿沙照常被冲, 1=完全湿沙不被侵蚀")]
@@ -57,7 +60,6 @@ namespace Sandcastle
 
         // 注册的 SDF 形状
         private readonly List<SdfPiece> _pieces = new List<SdfPiece>();
-        private SandTerrain _terrain;
 
         private Mesh _mesh;
         private MeshFilter _meshFilter;
@@ -80,12 +82,11 @@ namespace Sandcastle
             _sdfBase = new float[Nx * Ny * Nz];
             _erosion = new float[Nx * Ny * Nz];
             _wetness = new float[Nx * Ny * Nz];
-            _terrain = FindObjectOfType<SandTerrain>();
         }
 
         void Start()
         {
-            // 初始建一次，即使没有球，地形 SDF 也会填充地面 mesh
+            // 初始建一次：填出有厚度的沙层
             RebuildMesh();
         }
 
@@ -137,13 +138,12 @@ namespace Sandcastle
         private readonly Queue<int> _floodQueue = new Queue<int>(4096);
 
         /// <summary>
-        /// 连通域检测：从地面以下的实心体素作为“地基”种子，6 邻域 flood fill 向上扩散。
-        /// 凡是没被注水到的实心体素（无支撑）立即擦除，并返回其世界坐标供掉渣粒子使用。
+        /// 连通域检测：以沙箱最底几层实心体素作为“地基”种子，6 邻域 flood fill 向上扩散。
+        /// 凡是没和地基连通的实心体素（无支撑）立即擦除，并返回其世界坐标供掉渣粒子使用。
         /// 返回被移除的体素数。调用后需 RebuildMesh()。
         /// </summary>
         public int RemoveUnsupported(System.Collections.Generic.List<Vector3> removedPointsOut, int maxPoints = 48)
         {
-            if (_terrain == null) return 0;
             int total = _sdf.Length;
             if (_supported == null || _supported.Length != total)
                 _supported = new bool[total];
@@ -155,22 +155,17 @@ namespace Sandcastle
             float dy = size.y / resolutionY;
             float dz = size.z / resolutionZ;
 
-            // 种子：沙面以下的实心体素（地基）
+            // 地基种子：沙箱最底两层体素（y<=1）中的实心体素
             for (int z = 0; z < Nz; z++)
             {
-                for (int y = 0; y < Ny; y++)
+                for (int y = 0; y <= 1; y++)
                 {
                     for (int x = 0; x < Nx; x++)
                     {
                         int idx = Index(x, y, z);
                         if (_sdf[idx] >= 0f) continue;
-                        Vector3 wp = LocalToWorld(new Vector3(x * dx, y * dy, z * dz));
-                        float groundY = _terrain.SampleHeight(wp);
-                        if (wp.y < groundY - 0.05f)
-                        {
-                            _supported[idx] = true;
-                            _floodQueue.Enqueue(idx);
-                        }
+                        _supported[idx] = true;
+                        _floodQueue.Enqueue(idx);
                     }
                 }
             }
@@ -338,37 +333,52 @@ namespace Sandcastle
             float dy = size.y / resolutionY;
             float dz = size.z / resolutionZ;
 
+            // 初始沙层 = 一个有限厚度的 box（体积局部坐标，角落原点）
+            // Y: 0 ~ sandLayerThickness；XZ: inset ~ size-inset
+            Vector3 boxCenter = new Vector3(size.x * 0.5f, sandLayerThickness * 0.5f, size.z * 0.5f);
+            Vector3 boxHalf = new Vector3(size.x * 0.5f - sandInset,
+                                          sandLayerThickness * 0.5f,
+                                          size.z * 0.5f - sandInset);
+
             for (int z = 0; z < Nz; z++)
             {
                 for (int y = 0; y < Ny; y++)
                 {
                     for (int x = 0; x < Nx; x++)
                     {
-                        int borderFade = 2;
-                        bool atBorder = (x < borderFade || x >= Nx - borderFade ||
-                                         z < borderFade || z >= Nz - borderFade);
-
                         Vector3 localPos = new Vector3(x * dx, y * dy, z * dz);
                         Vector3 worldPos = LocalToWorld(localPos);
 
-                        float d = float.PositiveInfinity;
-                        if (includeTerrain && _terrain != null)
-                        {
-                            float groundY = _terrain.SampleHeight(worldPos);
-                            d = worldPos.y - groundY;
-                        }
+                        // 基础沙层 box SDF
+                        float d = SdfBoxLocal(localPos, boxCenter, boxHalf);
 
+                        // 叠加所有 piece（世界坐标采样）
                         for (int i = 0; i < _pieces.Count; i++)
                         {
                             float di = _pieces[i].SampleSdf(worldPos);
                             d = SmoothMin(d, di, smoothK);
                         }
 
-                        if (atBorder) d = Mathf.Max(d, 0.5f);
+                        // 体积最外一圈强制为空气，保证 MC 能封住边界面
+                        bool atBorder = (x == 0 || x == Nx - 1 || y == 0 || y == Ny - 1 ||
+                                         z == 0 || z == Nz - 1);
+                        if (atBorder) d = Mathf.Max(d, 0.01f);
                         _sdfBase[Index(x, y, z)] = d;
                     }
                 }
             }
+        }
+
+        /// <summary>体积局部坐标下的 box SDF。</summary>
+        static float SdfBoxLocal(Vector3 p, Vector3 center, Vector3 half)
+        {
+            Vector3 q = new Vector3(
+                Mathf.Abs(p.x - center.x) - half.x,
+                Mathf.Abs(p.y - center.y) - half.y,
+                Mathf.Abs(p.z - center.z) - half.z);
+            float outside = new Vector3(Mathf.Max(q.x, 0), Mathf.Max(q.y, 0), Mathf.Max(q.z, 0)).magnitude;
+            float inside = Mathf.Min(Mathf.Max(q.x, Mathf.Max(q.y, q.z)), 0f);
+            return outside + inside;
         }
 
         /// <summary>多项式 smooth min（IQ 公式）。</summary>

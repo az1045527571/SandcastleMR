@@ -8,17 +8,17 @@ using UnityEngine;
 public class SimpleWave : MonoBehaviour
 {
     [Header("尺寸")]
-    [Tooltip("如果场景内有 SandTerrain，按其大小化同一个水面")]
-    public float size = 25f;
+    [Tooltip("水面平面边长（米）。略大于沙箱让海水漫过边缘")]
+    public float size = 0.6f;
 
     [Header("高度")]
-    [Tooltip("相对 SandTerrain 表面抬高多少米")]
-    public float heightAboveSand = 0.02f;
+    [Tooltip("静止水面世界 Y。由 WaveSimulator 每帧覆写")]
+    public float restWorldY = 0.04f;
 
     [Header("波浪")]
-    public float waveHeight = 0.02f;
+    public float waveHeight = 0.004f;
     public float waveSpeed = 0.8f;
-    public float waveFreq = 1.5f;
+    public float waveFreq = 12f;
 
     [Header("颜色")]
     public Color shallowColor = new Color(0.2f, 0.75f, 0.8f, 0.5f);
@@ -29,17 +29,6 @@ public class SimpleWave : MonoBehaviour
 
     void Start()
     {
-        // 对齐 SandTerrain
-        Vector3 sandWorldPos = Vector3.zero;
-        float sandSurfaceY = 0f;
-        var terrain = FindObjectOfType<SandTerrain>();
-        if (terrain != null)
-        {
-            size = terrain.size;
-            sandWorldPos = terrain.transform.position;
-            sandSurfaceY = sandWorldPos.y + terrain.initialHeight;
-        }
-
         // 创建细分平面
         _mesh = GeneratePlane(64, size);
         _baseVerts = _mesh.vertices.Clone() as Vector3[];
@@ -63,8 +52,8 @@ public class SimpleWave : MonoBehaviour
         mat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
         mr.material = mat;
 
-        // 水面与沙面 X/Z 对齐, Y 在沙面上方 heightAboveSand
-        transform.position = new Vector3(sandWorldPos.x, sandSurfaceY + heightAboveSand, sandWorldPos.z);
+        // 静止位置在世界原点上方 restWorldY，X/Z 对齐原点
+        transform.position = new Vector3(0f, restWorldY, 0f);
     }
 
     void Update()

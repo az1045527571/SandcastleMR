@@ -10,7 +10,7 @@ namespace Sandcastle
     public class SdfVolumeBoundsVisualizer : MonoBehaviour
     {
         public Color color = new Color(0.2f, 0.8f, 1f, 0.9f);
-        public float lineWidth = 0.02f;
+        public float lineWidth = 0.002f;
 
         private SdfVolume _volume;
         private LineRenderer[] _lines;
