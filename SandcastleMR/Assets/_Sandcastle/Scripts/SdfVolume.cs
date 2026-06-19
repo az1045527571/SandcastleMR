@@ -101,6 +101,14 @@ namespace Sandcastle
             RebuildMesh();
         }
 
+        /// <summary>piece 列表（只读，供 GpuSandRenderer 收集参数上传）</summary>
+        public System.Collections.Generic.IReadOnlyList<SdfPiece> Pieces => _pieces;
+        /// <summary>erosion 场（GPU 路径上传用）</summary>
+        public float[] GetErosionData() => _erosion;
+        /// <summary>base 是否需重算（piece 增删），供 GPU 决定是否重跑 EvaluateBase kernel</summary>
+        public bool ConsumeBaseDirty() { bool d = _baseDirty; _baseDirty = false; return d; }
+        public bool BaseDirty => _baseDirty;
+
         public void Unregister(SdfPiece p)
         {
             if (_pieces.Remove(p))
@@ -380,6 +388,14 @@ namespace Sandcastle
 
         public void RebuildMesh()
         {
+            // GPU 路径：base(含piece)和 erosion 都在 GPU 算，CPU 不跑 EvaluateBase/合成/MC
+            // _baseDirty 交由 GpuSandRenderer.ConsumeBaseDirty 读取决定是否重跑 GPU EvaluateBase
+            if (GpuSand != null && GpuSand.useGpu)
+            {
+                if (_baseDirty) { GpuSand.MarkBaseDirty(); _baseDirty = false; }
+                else GpuSand.MarkDirty();
+                return;
+            }
             if (_baseDirty)
             {
                 EvaluateBase();
@@ -388,13 +404,6 @@ namespace Sandcastle
             // 最终 SDF = base + erosion
             for (int i = 0; i < _sdf.Length; i++)
                 _sdf[i] = _sdfBase[i] + _erosion[i];
-
-            // GPU 路径激活时：跳过 CPU Marching Cubes，改为通知 GPU 重建（从 _sdf 上传）
-            if (GpuSand != null && GpuSand.useGpu)
-            {
-                GpuSand.MarkDirty();
-                return;
-            }
             ExtractMesh();
         }
 

@@ -29,11 +29,17 @@ namespace Sandcastle
         private ComputeBuffer _sdfBaseBuf, _erosionBuf, _wetnessBuf;
         private ComputeBuffer _vertBuf, _counterBuf;
         private ComputeBuffer _edgeTable, _triTable, _edgeVertexIndex, _vertexOffset;
+        private ComputeBuffer _pieceBuf, _splinePtsBuf;
         private int _kEvalBase, _kMC;
         private bool _dirty = true;
+        private bool _baseDirtyGpu = true;  // 需重跑 GPU EvaluateBase(piece 增删)
         private int _vertCount = 0;
         private Bounds _bounds;
         private MeshRenderer _cpuRenderer;
+
+        // Piece struct: float4x4(64) + float4(16) + float4(16) = 96 bytes
+        private const int PIECE_STRIDE = 96;
+        private const int MAX_SPLINE_PTS = 4096;
 
         // Vert: float4 pos + float4 nw = 8 floats = 32 bytes (全 float4 对齐避免 padding 坑)
         private const int VERT_STRIDE = 32;
@@ -133,6 +139,8 @@ namespace Sandcastle
             }
             // EvaluateBase 绑定
             compute.SetBuffer(_kEvalBase, "_SdfBaseBuf", _sdfBaseBuf);
+            compute.SetBuffer(_kEvalBase, "_Pieces", _pieceBuf);
+            compute.SetBuffer(_kEvalBase, "_SplinePts", _splinePtsBuf);
             // MarchingCubes 绑定
             compute.SetBuffer(_kMC, "_SdfBaseBuf", _sdfBaseBuf);
             compute.SetBuffer(_kMC, "_ErosionBuf", _erosionBuf);
@@ -145,28 +153,85 @@ namespace Sandcastle
             compute.SetBuffer(_kMC, "_VertexOffset", _vertexOffset);
         }
 
+        // 收集 SdfVolume 的 piece 参数上传 GPU
+        int UploadPieces()
+        {
+            var pieces = _vol.Pieces;
+            int n = 0;
+            var pdata = new System.Collections.Generic.List<float>();   // 每 piece 24 floats (96B)
+            var spts = new System.Collections.Generic.List<Vector2>();
+            for (int i = 0; i < pieces.Count && n < 64; i++)
+            {
+                var p = pieces[i];
+                if (p == null) continue;
+                Matrix4x4 w2l = p.transform.worldToLocalMatrix;
+                int type;
+                Vector4 p0, p1;
+                switch (p.shape)
+                {
+                    case SdfPiece.ShapeType.Box:
+                        type = 1;
+                        float hb = p.radius; // CPU 版 halfSize = radius
+                        p0 = new Vector4(hb, hb, hb, 0);
+                        p1 = new Vector4(0, 0, 0, type);
+                        break;
+                    case SdfPiece.ShapeType.Spline:
+                        type = 2;
+                        int start = spts.Count;
+                        if (p.splinePoints != null)
+                            foreach (var sp in p.splinePoints) spts.Add(new Vector2(sp.x, sp.z));
+                        int cnt = p.splinePoints != null ? p.splinePoints.Count : 0;
+                        p0 = new Vector4(start, cnt, p.splineRadius, p.splineTopY);
+                        p1 = new Vector4(p.splineBottomY, 0, 0, type);
+                        break;
+                    default: // Sphere (bakedmesh 也当球处理, 跳过烘焙)
+                        type = 0;
+                        Vector3 c = p.transform.position;
+                        float r = p.radius * p.transform.lossyScale.x;
+                        p0 = new Vector4(c.x, c.y, c.z, r);
+                        p1 = new Vector4(0, 0, 0, type);
+                        break;
+                }
+                // worldToLocal 矩阵 16 floats (球/spline 不用但占位)
+                for (int r = 0; r < 4; r++)
+                    for (int col = 0; col < 4; col++)
+                        pdata.Add(w2l[r, col]);
+                pdata.Add(p0.x); pdata.Add(p0.y); pdata.Add(p0.z); pdata.Add(p0.w);
+                pdata.Add(p1.x); pdata.Add(p1.y); pdata.Add(p1.z); pdata.Add(p1.w);
+                n++;
+            }
+            if (n > 0)
+            {
+                _pieceBuf.SetData(pdata.ToArray());
+                if (spts.Count > 0) _splinePtsBuf.SetData(spts.ToArray());
+            }
+            return n;
+        }
+
         void Rebuild()
         {
-            // 从 CPU SdfVolume 的 _sdf (= _sdfBase + _erosion, 含所有 piece/挖改) 上传到 GPU
-            // 写操作改 CPU _sdf 后调 MarkDirty 触发本次重建; 静止帧不进这里
-            float[] cpuSdf = _vol.GetSdfData();
-            if (cpuSdf != null && cpuSdf.Length == _voxCount)
+            compute.SetMatrix("_SandL2W", transform.localToWorldMatrix);
+
+            // base(含 piece) 仅在 piece 增删时重算
+            if (_baseDirtyGpu)
             {
-                _sdfBaseBuf.SetData(cpuSdf);
-            }
-            else
-            {
+                int pcount = UploadPieces();
+                compute.SetInt("_PieceCount", pcount);
+                compute.SetFloat("_SmoothK", _vol.smoothK);
                 compute.Dispatch(_kEvalBase,
                     Mathf.CeilToInt(_nx / 4f), Mathf.CeilToInt(_ny / 4f), Mathf.CeilToInt(_nz / 4f));
+                _baseDirtyGpu = false;
             }
 
-            // MarchingCubes: 重置计数器后 dispatch over cube 网格
-            compute.SetMatrix("_SandL2W", transform.localToWorldMatrix);
+            // erosion 从 CPU 上传（铲沙/侵蚀改的，便宜）; wetness 同理
+            float[] ero = _vol.GetErosionData();
+            if (ero != null && ero.Length == _voxCount) _erosionBuf.SetData(ero);
+
+            // MarchingCubes
             _counterBuf.SetData(new uint[] { 0 });
             compute.Dispatch(_kMC,
                 Mathf.CeilToInt(_resX / 4f), Mathf.CeilToInt(_resY / 4f), Mathf.CeilToInt(_resZ / 4f));
 
-            // 从计数器读顶点数
             uint[] cnt = new uint[1];
             _counterBuf.GetData(cnt);
             _vertCount = (int)cnt[0];
@@ -201,6 +266,8 @@ namespace Sandcastle
 
         /// <summary>外部标记需要重建（写操作后调用，阶段二接入）。</summary>
         public void MarkDirty() => _dirty = true;
+        /// <summary>标记 base 需重算（piece 增删后）。</summary>
+        public void MarkBaseDirty() { _baseDirtyGpu = true; _dirty = true; }
 
         void OnDestroy()
         {
@@ -213,6 +280,8 @@ namespace Sandcastle
             _triTable?.Release();
             _edgeVertexIndex?.Release();
             _vertexOffset?.Release();
+            _pieceBuf?.Release();
+            _splinePtsBuf?.Release();
         }
     }
 }
