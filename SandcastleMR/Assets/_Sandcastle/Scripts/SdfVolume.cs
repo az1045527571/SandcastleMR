@@ -404,6 +404,10 @@ namespace Sandcastle
                     GpuSand.MarkBaseDirty();   // 通知 GPU 重新上传 base
                 }
                 else GpuSand.MarkDirty();
+                // 合成最终 _sdf = base + erosion。虽然 CPU 不跑 ExtractMesh(MC 交 GPU),
+                // 但 RemoveUnsupported(塌陷)/查询类 API 读 _sdf, 必须保持最新。纯数组加法, 便宜。
+                for (int i = 0; i < _sdf.Length; i++)
+                    _sdf[i] = _sdfBase[i] + _erosion[i];
                 return;
             }
             if (_baseDirty)
