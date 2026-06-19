@@ -94,10 +94,20 @@ namespace Sandcastle
             RebuildMesh();
         }
 
+        // 局部重算：piece 增删时记录受影响世界范围, EvaluateBase 只重算该区(74ms→个位数ms)。
+        private bool _hasDirtyRegion;
+        private Bounds _dirtyRegion;
+        void AddDirtyRegion(Bounds b)
+        {
+            if (!_hasDirtyRegion) { _dirtyRegion = b; _hasDirtyRegion = true; }
+            else _dirtyRegion.Encapsulate(b);
+        }
+
         public void Register(SdfPiece p)
         {
             if (!_pieces.Contains(p)) _pieces.Add(p);
             _baseDirty = true;
+            AddDirtyRegion(p.WorldBounds());
             RebuildMesh();
         }
 
@@ -118,6 +128,7 @@ namespace Sandcastle
             if (_pieces.Remove(p))
             {
                 _baseDirty = true;
+                AddDirtyRegion(p.WorldBounds());   // 删除位置也要重算(恢复成沙面)
                 RebuildMesh();
             }
         }
@@ -138,6 +149,71 @@ namespace Sandcastle
 
         /// <summary>沙层表面的实际世界 Y（跟随根物体偏移）。水面/潮汐应以此为基准。</summary>
         public float SandSurfaceWorldY => LocalToWorld(new Vector3(0f, sandLayerThickness, 0f)).y;
+
+        /// <summary>
+        /// 对沙体 SDF 做射线求交(sphere tracing), 替代 MeshCollider 射线。
+        /// 只在玩家交互的那一帧、只沿一条射线采样几十次, 几乎零成本,
+        /// 且永远和真实沙形一致(读源数据 _sdf)。不需要 GPU 回读建 collider。
+        /// </summary>
+        public bool RaycastSdf(Ray worldRay, out Vector3 hitPoint, float maxDist = 100f)
+        {
+            hitPoint = Vector3.zero;
+            // 体积世界包围盒(用 OBB 简化为中心+尺寸的 AABB 粗裁, 再用 SDF 精确步进)
+            // 先把射线裁到体积附近, 避免空步过多
+            float dx = size.x / resolutionX;
+            float t = 0f;
+            float surfaceEps = Mathf.Min(dx, Mathf.Min(size.y / resolutionY, size.z / resolutionZ)) * 0.5f;
+            float prevSdf = float.MaxValue;
+            float prevT = 0f;
+
+            // 最多步进 256 步, 每步至少走 surfaceEps, 防死循环
+            for (int i = 0; i < 256 && t < maxDist; i++)
+            {
+                Vector3 wp = worldRay.origin + worldRay.direction * t;
+                Vector3 lp = WorldToLocal(wp);
+                // 出体积范围: 跳过(朝体积走), 若永远进不了则停
+                bool inside = lp.x >= 0 && lp.x <= size.x && lp.y >= 0 && lp.y <= size.y && lp.z >= 0 && lp.z <= size.z;
+                if (!inside)
+                {
+                    // 粗步推进(未进体积时步长大一点)
+                    t += dx;
+                    prevSdf = float.MaxValue;
+                    continue;
+                }
+                float d = SampleSdfAtLocal(lp);   // <0 实心, >0 空气
+                if (d < 0f)
+                {
+                    // 跨过表面: 在 [prevT, t] 间线性插值找零点
+                    if (prevSdf != float.MaxValue && prevSdf > 0f)
+                    {
+                        float frac = prevSdf / (prevSdf - d);   // 0..1
+                        t = Mathf.Lerp(prevT, t, frac);
+                    }
+                    hitPoint = worldRay.origin + worldRay.direction * t;
+                    return true;
+                }
+                prevSdf = d; prevT = t;
+                // sphere tracing: 步长 = SDF 值(到表面距离), 但不小于 surfaceEps 防死循环
+                t += Mathf.Max(d, surfaceEps);
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// 统一沙面拾取：先用 SDF 射线打真实沙体, miss 再用 Physics.Raycast 兑底
+        /// (打 SdfFloor 平面/静态物体)。这样 GPU 模式不需每帧重建 collider 也能精准拾取。
+        /// </summary>
+        public bool RaycastSandOrPhysics(Ray ray, out Vector3 hitPoint, float maxDist = 100f)
+        {
+            if (RaycastSdf(ray, out hitPoint, maxDist)) return true;
+            if (Physics.Raycast(ray, out RaycastHit rh, maxDist))
+            {
+                hitPoint = rh.point;
+                return true;
+            }
+            hitPoint = Vector3.zero;
+            return false;
+        }
 
         /// <summary>获取当前 SDF 数据数组引用（只读）</summary>
         public float[] GetSdfData() => _sdf;
@@ -406,7 +482,10 @@ namespace Sandcastle
                 if (_baseDirty)
                 {
                     PerfProbe.Begin("CPU.EvaluateBase");
-                    EvaluateBase();      // 算 CPU _sdfBase(含 bakedmesh, SampleSdf 原生支持)
+                    // 首次(无脏区)全量; 后续 piece 增删只重算脏区
+                    if (_hasDirtyRegion) EvaluateBase(BoundsToVoxelRange(_dirtyRegion));
+                    else EvaluateBase();
+                    _hasDirtyRegion = false;
                     PerfProbe.End("CPU.EvaluateBase");
                     _baseDirty = false;
                     GpuSand.MarkBaseDirty();   // 通知 GPU 重新上传 base
@@ -422,7 +501,9 @@ namespace Sandcastle
             }
             if (_baseDirty)
             {
-                EvaluateBase();
+                if (_hasDirtyRegion) EvaluateBase(BoundsToVoxelRange(_dirtyRegion));
+                else EvaluateBase();
+                _hasDirtyRegion = false;
                 _baseDirty = false;
             }
             // 最终 SDF = base + erosion
@@ -431,8 +512,39 @@ namespace Sandcastle
             ExtractMesh();
         }
 
-        /// <summary>重新计算基础 SDF（地形 + 所有 piece）。耗时操作，仅在 piece 增删时调用。</summary>
-        void EvaluateBase()
+        /// <summary>体素索引范围(闭区间)。</summary>
+        public struct VoxelRange { public int x0, y0, z0, x1, y1, z1; }
+
+        /// <summary>世界包围盒 → 体素索引范围, 含 smoothK + 一格余量(覆盖过渡带)。</summary>
+        VoxelRange BoundsToVoxelRange(Bounds worldBounds)
+        {
+            float dx = size.x / resolutionX;
+            float dy = size.y / resolutionY;
+            float dz = size.z / resolutionZ;
+            // 世界 AABB 八角转本地, 取本地 AABB(体积可能有旋转)
+            Vector3 mn = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+            Vector3 mx = new Vector3(float.MinValue, float.MinValue, float.MinValue);
+            Vector3 c = worldBounds.center, e = worldBounds.extents;
+            for (int i = 0; i < 8; i++)
+            {
+                Vector3 corner = c + new Vector3((i & 1) == 0 ? -e.x : e.x,
+                                                 (i & 2) == 0 ? -e.y : e.y,
+                                                 (i & 4) == 0 ? -e.z : e.z);
+                Vector3 lp = WorldToLocal(corner);
+                mn = Vector3.Min(mn, lp);
+                mx = Vector3.Max(mx, lp);
+            }
+            // smoothK 让融合影响外扩, 加 2 格余量
+            float pad = smoothK + 2f * Mathf.Max(dx, Mathf.Max(dy, dz));
+            VoxelRange r;
+            r.x0 = Mathf.FloorToInt((mn.x - pad) / dx); r.x1 = Mathf.CeilToInt((mx.x + pad) / dx);
+            r.y0 = Mathf.FloorToInt((mn.y - pad) / dy); r.y1 = Mathf.CeilToInt((mx.y + pad) / dy);
+            r.z0 = Mathf.FloorToInt((mn.z - pad) / dz); r.z1 = Mathf.CeilToInt((mx.z + pad) / dz);
+            return r;
+        }
+
+        /// <summary>重算基础 SDF。range=null 时全量重算; 否则只重算指定体素范围(piece 增删局部更新)。</summary>
+        void EvaluateBase(VoxelRange? range = null)
         {
             float dx = size.x / resolutionX;
             float dy = size.y / resolutionY;
@@ -445,11 +557,20 @@ namespace Sandcastle
                                           sandLayerThickness * 0.5f,
                                           size.z * 0.5f - sandInset);
 
-            for (int z = 0; z < Nz; z++)
+            int z0 = 0, z1 = Nz - 1, y0 = 0, y1 = Ny - 1, x0 = 0, x1 = Nx - 1;
+            if (range.HasValue)
             {
-                for (int y = 0; y < Ny; y++)
+                var r = range.Value;
+                x0 = Mathf.Clamp(r.x0, 0, Nx - 1); x1 = Mathf.Clamp(r.x1, 0, Nx - 1);
+                y0 = Mathf.Clamp(r.y0, 0, Ny - 1); y1 = Mathf.Clamp(r.y1, 0, Ny - 1);
+                z0 = Mathf.Clamp(r.z0, 0, Nz - 1); z1 = Mathf.Clamp(r.z1, 0, Nz - 1);
+            }
+
+            for (int z = z0; z <= z1; z++)
+            {
+                for (int y = y0; y <= y1; y++)
                 {
-                    for (int x = 0; x < Nx; x++)
+                    for (int x = x0; x <= x1; x++)
                     {
                         Vector3 localPos = new Vector3(x * dx, y * dy, z * dz);
                         Vector3 worldPos = LocalToWorld(localPos);

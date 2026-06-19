@@ -126,21 +126,21 @@ public class SdfPiecePlacer : MonoBehaviour
         if (Input.GetKey(KeyCode.V))
         {
             Ray wetRay = _cam.ScreenPointToRay(Input.mousePosition);
-            if (Physics.Raycast(wetRay, out RaycastHit wetHit, 100f))
+            if (_volume.RaycastSandOrPhysics(wetRay, out Vector3 wetPt))
             {
-                _volume.WetVolume(wetHit.point, wetRadius, wetPerSecond * Time.deltaTime);
+                _volume.WetVolume(wetPt, wetRadius, wetPerSecond * Time.deltaTime);
                 _volume.RefreshWetnessVisual();
             }
         }
 
-        // 射线
+        // 射线(SDF 求交优先, 兑底 Physics)
         Ray ray = _cam.ScreenPointToRay(Input.mousePosition);
-        if (Physics.Raycast(ray, out RaycastHit hit, 100f))
+        if (_volume.RaycastSandOrPhysics(ray, out Vector3 hitPt))
         {
-            UpdatePreview(hit.point);
+            UpdatePreview(hitPt);
             if (Input.GetMouseButtonDown(0) && !Input.GetMouseButton(1) && !Input.GetKey(KeyCode.X))
             {
-                Place(hit.point);
+                Place(hitPt);
             }
         }
         else if (_preview != null)

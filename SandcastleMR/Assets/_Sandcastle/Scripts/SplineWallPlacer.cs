@@ -60,8 +60,8 @@ namespace Sandcastle
             if (Input.GetMouseButtonDown(0) && !Input.GetKey(KeyCode.X))
             {
                 Ray ray = _cam.ScreenPointToRay(Input.mousePosition);
-                if (Physics.Raycast(ray, out RaycastHit hit, 100f))
-                    AddPoint(hit.point);
+                if (_volume.RaycastSandOrPhysics(ray, out Vector3 pt))
+                    AddPoint(pt);
             }
 
             // Backspace 撤销

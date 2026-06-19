@@ -47,8 +47,10 @@ namespace Sandcastle
         private Bounds _bounds;
         private MeshRenderer _cpuRenderer;
 
-        // 方案 B: GPU 顶点回读重建 collider mesh，保证碰撞与 GPU 显示一致
-        public bool updateCollider = true;
+        // 方案 B: GPU 顶点回读重建 collider mesh。
+        // 默认关：沙面射线已改用 SdfVolume.RaycastSdf(直接读 _sdf), 不再需要每帧回读建 collider
+        // (那是侵蚀帧 9.56ms 的大头)。若 C8 碎块 Rigidbody 落体将来需要沙面物理碰撞可重开。
+        public bool updateCollider = false;
         private MeshCollider _meshCollider;
         private Mesh _colliderMesh;
 

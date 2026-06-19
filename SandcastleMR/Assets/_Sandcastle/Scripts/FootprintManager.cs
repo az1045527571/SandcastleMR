@@ -24,6 +24,7 @@ namespace Sandcastle
         public float lifetime = 8f;
 
         private Camera _cam;
+        private SdfVolume _volume;
         private int _layerR = -1, _layerL = -1;
         private Vector2 _lastXZ;
         private bool _hasLast;
@@ -32,6 +33,7 @@ namespace Sandcastle
         void Start()
         {
             _cam = Camera.main;
+            _volume = FindObjectOfType<SdfVolume>();
             var texR = Resources.Load<Texture2D>("footprint_R_normal");
             var texL = Resources.Load<Texture2D>("footprint_L_normal");
             var sys = SandDecalSystem.Instance;
@@ -54,9 +56,9 @@ namespace Sandcastle
             if (Input.GetKey(KeyCode.F))
             {
                 Ray ray = _cam.ScreenPointToRay(Input.mousePosition);
-                if (Physics.Raycast(ray, out RaycastHit hit, 100f))
+                if (_volume != null && _volume.RaycastSandOrPhysics(ray, out Vector3 fp))
                 {
-                    Vector2 xz = new Vector2(hit.point.x, hit.point.z);
+                    Vector2 xz = new Vector2(fp.x, fp.z);
                     if (!_hasLast)
                     {
                         _lastXZ = xz;

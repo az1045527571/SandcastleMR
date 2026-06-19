@@ -54,6 +54,66 @@ namespace Sandcastle
         }
 
         /// <summary>
+        /// 此形状的世界包围盒(用于 EvaluateBase 局部重算)。已含一点余量。
+        /// </summary>
+        public Bounds WorldBounds()
+        {
+            switch (shape)
+            {
+                case ShapeType.Box:
+                {
+                    // box 半边 = radius(本地), 取 8 角变换到世界求 AABB
+                    float h = radius;
+                    Bounds b = new Bounds(transform.TransformPoint(new Vector3(-h, -h, -h)), Vector3.zero);
+                    for (int i = 1; i < 8; i++)
+                    {
+                        Vector3 corner = new Vector3((i & 1) == 0 ? -h : h,
+                                                     (i & 2) == 0 ? -h : h,
+                                                     (i & 4) == 0 ? -h : h);
+                        b.Encapsulate(transform.TransformPoint(corner));
+                    }
+                    return b;
+                }
+                case ShapeType.Spline:
+                {
+                    if (splinePoints == null || splinePoints.Count == 0)
+                        return new Bounds(transform.position, Vector3.one * 0.1f);
+                    Bounds b = new Bounds(splinePoints[0], Vector3.zero);
+                    foreach (var sp in splinePoints) b.Encapsulate(sp);
+                    // XZ 扩半宽, Y 覆盖堤底~堤顶
+                    b.Encapsulate(new Vector3(b.min.x, splineBottomY, b.min.z));
+                    b.Encapsulate(new Vector3(b.max.x, splineTopY, b.max.z));
+                    b.Expand(new Vector3(splineRadius * 2f, 0.02f, splineRadius * 2f));
+                    return b;
+                }
+                case ShapeType.BakedMesh:
+                {
+                    if (bakedSdf != null)
+                    {
+                        // 烘焙资产本地 bounds → 世界
+                        Bounds lb = bakedSdf.bounds;
+                        Bounds b = new Bounds(transform.TransformPoint(lb.center), Vector3.zero);
+                        Vector3 e = lb.extents;
+                        for (int i = 0; i < 8; i++)
+                        {
+                            Vector3 corner = lb.center + new Vector3((i & 1) == 0 ? -e.x : e.x,
+                                                                     (i & 2) == 0 ? -e.y : e.y,
+                                                                     (i & 4) == 0 ? -e.z : e.z);
+                            b.Encapsulate(transform.TransformPoint(corner));
+                        }
+                        return b;
+                    }
+                    goto default;
+                }
+                default: // Sphere / Capsule
+                {
+                    float r = radius * transform.lossyScale.x;
+                    return new Bounds(transform.position, Vector3.one * (r * 2f));
+                }
+            }
+        }
+
+        /// <summary>
         /// 返回世界坐标 p 处到此形状表面的带符号距离。
         /// </summary>
         public float SampleSdf(Vector3 worldPos)

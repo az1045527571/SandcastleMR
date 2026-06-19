@@ -119,7 +119,7 @@ namespace Sandcastle
             if (!IsActive || _cam == null || _volume == null) return;
 
             Ray ray = _cam.ScreenPointToRay(Input.mousePosition);
-            bool hit = Physics.Raycast(ray, out RaycastHit rh, 100f);
+            bool hit = _volume.RaycastSandOrPhysics(ray, out Vector3 hitPos);  // SDF 求交优先, 不依赖每帧 collider
 
             // 抬起量：按住朝 1 过渡，松开朝 0 过渡
             float target = _holding ? 1f : 0f;
@@ -132,17 +132,17 @@ namespace Sandcastle
             if (hit && _shovel != null)
             {
                 SetShovelVisible(true);
-                Vector3 toCam = _cam.transform.position - rh.point;
+                Vector3 toCam = _cam.transform.position - hitPos;
                 toCam.y = 0;
                 Quaternion faceRot = (toCam.sqrMagnitude > 1e-4f)
                     ? Quaternion.LookRotation(toCam.normalized, Vector3.up)
                     : Quaternion.identity;
                 _shovel.transform.rotation = faceRot * Quaternion.Euler(baseEuler.x, baseEuler.y, baseEuler.z + tiltZ);
-                _shovel.transform.position = rh.point;
+                _shovel.transform.position = hitPos;
                 if (_digPoint != null)
                 {
                     Vector3 offset = _digPoint.position - _shovel.transform.position;
-                    _shovel.transform.position = rh.point - offset;
+                    _shovel.transform.position = hitPos - offset;
                 }
                 // 抬起时整体抬高
                 _shovel.transform.position += Vector3.up * upY;
@@ -153,7 +153,7 @@ namespace Sandcastle
             }
 
             // 笔刷中心 = cutbox 世界位置（没有则用命中点）
-            Vector3 center = (_digPoint != null) ? _digPoint.position : rh.point;
+            Vector3 center = (_digPoint != null) ? _digPoint.position : hitPos;
             float rotY = _shovel != null ? _shovel.transform.eulerAngles.y : 0f;
 
             // 按住左键：铲子抬起；空铲按下瞬间挖
