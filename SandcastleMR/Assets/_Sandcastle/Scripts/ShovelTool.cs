@@ -39,10 +39,13 @@ namespace Sandcastle
         public string loadedSandName = "CHANZI_SHAZI";
 
         [Header("姿态")]
-        [Tooltip("铲子基础姿态欧拉角（在面向相机的基础上叠加）。x=倾斜, y=纵向翻转, z=滚转")]
+        [Tooltip("铲子初始/基础姿态欧拉角（在面向相机的基础上叠加）。x=俯仰/倾斜, y=纵向翻转, z=滚转")]
         public Vector3 baseEuler = new Vector3(45f, 180f, 0f);
 
         [Header("铲动动画")]
+        [Tooltip("挬动强度随时间的曲线（0~1 时间 → 0~1 强度）。所有挬动/俱冲都乘这个值")]
+        public AnimationCurve swingCurve = new AnimationCurve(
+            new Keyframe(0f, 0f), new Keyframe(0.5f, 1f), new Keyframe(1f, 0f));
         [Tooltip("铲/招时绕 Z 挬动的峰值角度（正负决定挬动方向）")]
         public float swingAngle = -55f;
         [Tooltip("挬动单程时长（秒）")]
@@ -113,7 +116,7 @@ namespace Sandcastle
             {
                 _swingT += Time.deltaTime;
                 float u = Mathf.Clamp01(_swingT / Mathf.Max(swingDuration, 1e-3f));
-                float arc = Mathf.Sin(u * Mathf.PI); // 0→峰值→0
+                float arc = swingCurve.Evaluate(u); // 可在 Inspector 调的曲线
                 float swingZ = arc * swingAngle;
                 if (_shovel != null)
                 {
