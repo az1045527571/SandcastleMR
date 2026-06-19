@@ -32,6 +32,7 @@ namespace Sandcastle
         private int _kEvalBase, _kMC;
         private bool _dirty = true;
         private bool _loggedOnce = false;
+        private bool _loggedDraw = false;
         private int _vertCount = 0;
         private Bounds _bounds;
         private MeshRenderer _cpuRenderer;
@@ -47,8 +48,11 @@ namespace Sandcastle
             if (compute == null) compute = Resources.Load<ComputeShader>("SandMarchingCubes");
             if (material == null)
             {
-                var sh = Shader.Find("Sandcastle/SandGPU");
+                // 诊断: 先用纯红极简 shader 隔离问题
+                var sh = Shader.Find("Sandcastle/SandGPU_Debug");
+                if (sh == null) sh = Shader.Find("Sandcastle/SandGPU");
                 if (sh != null) material = new Material(sh);
+                Debug.Log($"[GpuSand] shader=\"{(sh!=null?sh.name:\"NULL\")}\" 找到compute={compute!=null}");
             }
             if (compute == null || material == null)
             {
@@ -236,7 +240,8 @@ namespace Sandcastle
 
             if (_vertCount <= 0) return;
             material.SetBuffer("_VertBuf", _vertBuf);
-            // 用 DrawProcedural(非 indirect) + 回读的顶点数, 绕开 URP 下 DrawProceduralIndirect 不渲染的坑
+            Shader.SetGlobalBuffer("_VertBuf", _vertBuf); // 绕过 SRP Batcher 对 material buffer 的坑
+            if (!_loggedDraw) { _loggedDraw = true; Debug.Log($"[GpuSand] DrawProcedural 顶点数={_vertCount} mat={material.shader.name} bounds={_bounds}"); }
             Graphics.DrawProcedural(material, _bounds, MeshTopology.Triangles, _vertCount, 1,
                 null, null, UnityEngine.Rendering.ShadowCastingMode.On, true, gameObject.layer);
         }
