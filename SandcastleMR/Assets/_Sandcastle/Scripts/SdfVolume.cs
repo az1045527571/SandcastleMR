@@ -132,6 +132,94 @@ namespace Sandcastle
             }
         }
 
+        // 连通域检测复用缓冲（避免每帧 alloc）
+        private bool[] _supported;
+        private readonly Queue<int> _floodQueue = new Queue<int>(4096);
+
+        /// <summary>
+        /// 连通域检测：从地面以下的实心体素作为“地基”种子，6 邻域 flood fill 向上扩散。
+        /// 凡是没被注水到的实心体素（无支撑）立即擦除，并返回其世界坐标供掉渣粒子使用。
+        /// 返回被移除的体素数。调用后需 RebuildMesh()。
+        /// </summary>
+        public int RemoveUnsupported(System.Collections.Generic.List<Vector3> removedPointsOut, int maxPoints = 48)
+        {
+            if (_terrain == null) return 0;
+            int total = _sdf.Length;
+            if (_supported == null || _supported.Length != total)
+                _supported = new bool[total];
+            else
+                System.Array.Clear(_supported, 0, total);
+            _floodQueue.Clear();
+
+            float dx = size.x / resolutionX;
+            float dy = size.y / resolutionY;
+            float dz = size.z / resolutionZ;
+
+            // 种子：沙面以下的实心体素（地基）
+            for (int z = 0; z < Nz; z++)
+            {
+                for (int y = 0; y < Ny; y++)
+                {
+                    for (int x = 0; x < Nx; x++)
+                    {
+                        int idx = Index(x, y, z);
+                        if (_sdf[idx] >= 0f) continue;
+                        Vector3 wp = LocalToWorld(new Vector3(x * dx, y * dy, z * dz));
+                        float groundY = _terrain.SampleHeight(wp);
+                        if (wp.y < groundY - 0.05f)
+                        {
+                            _supported[idx] = true;
+                            _floodQueue.Enqueue(idx);
+                        }
+                    }
+                }
+            }
+
+            // BFS（6 邻）
+            while (_floodQueue.Count > 0)
+            {
+                int idx = _floodQueue.Dequeue();
+                int x = idx % Nx;
+                int y = (idx / Nx) % Ny;
+                int z = idx / (Nx * Ny);
+                TrySpread(x - 1, y, z);
+                TrySpread(x + 1, y, z);
+                TrySpread(x, y - 1, z);
+                TrySpread(x, y + 1, z);
+                TrySpread(x, y, z - 1);
+                TrySpread(x, y, z + 1);
+            }
+
+            // 擦除所有实心但无支撑的体素
+            int removed = 0;
+            if (removedPointsOut != null) removedPointsOut.Clear();
+            for (int z = 0; z < Nz; z++)
+            {
+                for (int y = 0; y < Ny; y++)
+                {
+                    for (int x = 0; x < Nx; x++)
+                    {
+                        int idx = Index(x, y, z);
+                        if (_sdf[idx] >= 0f || _supported[idx]) continue;
+                        _erosion[idx] = Mathf.Max(_erosion[idx], -_sdfBase[idx] + 0.01f);
+                        removed++;
+                        if (removedPointsOut != null && removedPointsOut.Count < maxPoints && (x + y + z) % 3 == 0)
+                            removedPointsOut.Add(LocalToWorld(new Vector3(x * dx, y * dy, z * dz)));
+                    }
+                }
+            }
+            return removed;
+        }
+
+        void TrySpread(int x, int y, int z)
+        {
+            if (x < 0 || x >= Nx || y < 0 || y >= Ny || z < 0 || z >= Nz) return;
+            int idx = Index(x, y, z);
+            if (_supported[idx] || _sdf[idx] >= 0f) return;
+            _supported[idx] = true;
+            _floodQueue.Enqueue(idx);
+        }
+
         /// <summary>
         /// 重新计算整个 SDF 并提取 mesh。
         /// </summary>
@@ -188,8 +276,7 @@ namespace Sandcastle
             }
         }
 
-        /// <summary>
-        /// 玩家浇水：在世界坐标 center 周围 radius 米内增加体素湿度。
+        /// <summary>玩家浇水：在世界坐标 center 周围 radius 米内增加体素湿度。
         /// 湿沙会按 wetResistance 抵抗海浪侵蚀，打造护城河/加固效果。
         /// </summary>
         public void WetVolume(Vector3 worldCenter, float radius, float amount)

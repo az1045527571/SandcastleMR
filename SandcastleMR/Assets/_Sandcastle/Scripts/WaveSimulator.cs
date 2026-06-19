@@ -47,6 +47,7 @@ namespace Sandcastle
         private bool _eroding;
         private float _rebuildTimer;
         private ErosionParticles _particles;
+        private readonly System.Collections.Generic.List<Vector3> _collapsePoints = new System.Collections.Generic.List<Vector3>(48);
 
         public float CurrentWaterLevel => _currentLevel;
 
@@ -65,7 +66,7 @@ namespace Sandcastle
             yield return null;
             // baseWaterLevel 已经硬编码 -0.08，此处只初始化 shader
             _currentLevel = baseWaterLevel;
-            Shader.SetGlobalFloat("_GlobalWaterY", baseWaterLevel + waveAmplitude);
+            Shader.SetGlobalFloat("_GlobalWaterY", baseWaterLevel);
             Shader.SetGlobalFloat("_GlobalWetTransition", 0.05f);
             Debug.Log($"[Wave] 初始化: baseWaterLevel = {baseWaterLevel:F3}");
         }
@@ -86,9 +87,8 @@ namespace Sandcastle
             _currentLevel = baseWaterLevel + surge * waveAmplitude;
 
             // 全局水位传给所有 Sand shader（顶点低Y会自动显示为湿沙）
-            // 采用峰值水位，这样退潮后被打过的沙还是湿的，梦错位阐明
-            float maxLevel = baseWaterLevel + waveAmplitude;
-            Shader.SetGlobalFloat("_GlobalWaterY", maxLevel);
+            // 用当前真实水位，这样静止时湿沙线锁在静止水面，不会被峰值抬高
+            Shader.SetGlobalFloat("_GlobalWaterY", _currentLevel);
             Shader.SetGlobalFloat("_GlobalWetTransition", 0.05f);
 
             // 同步水面视觉
@@ -114,6 +114,13 @@ namespace Sandcastle
                 if (_rebuildTimer >= rebuildInterval)
                 {
                     sdfVolume.RebuildMesh();
+                    // 每次重建后立即检测无支撑残块并移除（无需等退潮）
+                    int removed = sdfVolume.RemoveUnsupported(_collapsePoints);
+                    if (removed > 0)
+                    {
+                        sdfVolume.RebuildMesh();
+                        if (_particles != null) _particles.Emit(_collapsePoints);
+                    }
                     _rebuildTimer = 0f;
                 }
 
@@ -127,9 +134,16 @@ namespace Sandcastle
             {
                 // 退潮时刷新一次 mesh，让积累的侵蚀显现
                 sdfVolume.RebuildMesh();
+                // 连通域检测：没支撑的残块立即移除 + 掉渣粒子
+                int removed = sdfVolume.RemoveUnsupported(_collapsePoints);
+                if (removed > 0)
+                {
+                    sdfVolume.RebuildMesh();
+                    if (_particles != null) _particles.Emit(_collapsePoints);
+                    Debug.Log($"[Wave] 无支撑塔塌: 移除 {removed} 个体素");
+                }
                 _eroding = false;
                 _rebuildTimer = 0f;
-                Debug.Log($"[Wave] 退潮重建, 水位峰值 {baseWaterLevel + waveAmplitude:F3}");
             }
 
             // 湿度蒸发
