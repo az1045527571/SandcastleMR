@@ -17,6 +17,8 @@ public class SandcastleBootstrap : MonoBehaviour
     [Header("地形高度图(可选)")]
     [Tooltip("灰度高度图(需开 Read/Write)。拖这里赋给运行时生成的 SdfVolume。为空=平地/斜坡")]
     public Texture2D terrainHeightmap;
+    [Tooltip("若上方未拖图, 按此名从 Resources/ 加载(如 shatan_height)。留空则不加载")]
+    public string heightmapResourceName = "shatan_height";
     public float heightmapMinY = 0.05f;
     public float heightmapMaxY = 0.30f;
 
@@ -93,9 +95,12 @@ public class SandcastleBootstrap : MonoBehaviour
         sdfMr.sharedMaterial = sdfMat;
         var volume = sdfGo.AddComponent<SdfVolume>();
         // size 用 SdfVolume 默认 (5,1.5,5)，不覆写
-        if (terrainHeightmap != null)
+        var hm = terrainHeightmap;
+        if (hm == null && !string.IsNullOrEmpty(heightmapResourceName))
+            hm = Resources.Load<Texture2D>(heightmapResourceName);
+        if (hm != null)
         {
-            volume.heightmap = terrainHeightmap;
+            volume.heightmap = hm;
             volume.heightmapMinY = heightmapMinY;
             volume.heightmapMaxY = heightmapMaxY;
         }
