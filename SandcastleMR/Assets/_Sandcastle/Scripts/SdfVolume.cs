@@ -201,25 +201,104 @@ namespace Sandcastle
         [Tooltip("放/删/铲挖后多久跳一次塬陷检测(秒)。节流, 避免每次操作同步跑全场BFS卡顿。")]
         public float collapseCheckDelay = 0.2f;
 
-        /// <summary>放/删 piece 或铲挖后请求塬陷检测。节流: 不立即跑, 标记 pending, 停手 collapseCheckDelay 后在 Update 跑一次。
-        /// (RemoveUnsupported 是全场242万体素BFS, 每次操作同步跑会明显卡顿)。</summary>
+        /// <summary>放/删 piece 或铲挖后请求塬陷检测。节流+异步: 标记 pending, 停手 collapseCheckDelay 后在 Update
+        /// 调度异步 Burst job(不阻主线程), 后续帧检测完成再收割。塬陷碎块晚几帧掉落无感。</summary>
         public void CheckCollapse()
         {
             _collapsePending = true;
             _collapseTimer = collapseCheckDelay;
         }
 
+        // 异步塬陷 job 状态
+        private bool _collapseJobRunning;
+        private JobHandle _collapseHandle;
+        private NativeArray<float> _cjSdf;
+        private NativeArray<byte> _cjSupported;
+        private NativeArray<int> _cjQueue;
+        private NativeList<int> _cjRemoved;
+        private ErosionParticles _collapseParticles;
+
         void Update()
         {
+            // 1. 已有异步 job 在跑: 检查是否完成, 完了就收割
+            if (_collapseJobRunning)
+            {
+                if (_collapseHandle.IsCompleted)
+                {
+                    _collapseHandle.Complete();
+                    HarvestCollapse();
+                }
+                return;  // job 未完或刚收割, 本帧不再开新的
+            }
+
+            // 2. 节流计时到 且无 job 在跑: 调度一个异步塬陷 job
             if (_collapsePending)
             {
                 _collapseTimer -= Time.deltaTime;
                 if (_collapseTimer <= 0f)
                 {
                     _collapsePending = false;
-                    int removed = RemoveUnsupported(_collapseScratch);
-                    if (removed > 0) RebuildMesh();
+                    ScheduleCollapse();
                 }
+            }
+        }
+
+        /// <summary>调度异步连通域 Burst job(不等待)。</summary>
+        void ScheduleCollapse()
+        {
+            int total = _sdf.Length;
+            _cjSdf = new NativeArray<float>(total, Allocator.Persistent);
+            _cjSdf.CopyFrom(_sdf);
+            _cjSupported = new NativeArray<byte>(total, Allocator.Persistent);
+            _cjQueue = new NativeArray<int>(total, Allocator.Persistent);
+            _cjRemoved = new NativeList<int>(256, Allocator.Persistent);
+
+            var job = new RemoveUnsupportedJob
+            {
+                nx = Nx, ny = Ny, nz = Nz,
+                sdf = _cjSdf, supported = _cjSupported, queue = _cjQueue, removedIdx = _cjRemoved,
+            };
+            _collapseHandle = job.Schedule();
+            _collapseJobRunning = true;
+        }
+
+        /// <summary>job 完成后在主线程收割: 擦除无支撑体素 + 发碎屑粒子 + 重建。</summary>
+        void HarvestCollapse()
+        {
+            int removed = _cjRemoved.Length;
+            if (removed > 0)
+            {
+                float dx = size.x / resolutionX, dy = size.y / resolutionY, dz = size.z / resolutionZ;
+                _collapseScratch.Clear();
+                for (int n = 0; n < removed; n++)
+                {
+                    int idx = _cjRemoved[n];
+                    _erosion[idx] = Mathf.Max(_erosion[idx], -_sdfBase[idx] + 0.01f);
+                    _carved[idx] = true;
+                    if (_collapseScratch.Count < 48 && (n % 3) == 0)
+                    {
+                        int x = idx % Nx, y = (idx / Nx) % Ny, z = idx / (Nx * Ny);
+                        _collapseScratch.Add(LocalToWorld(new Vector3(x * dx, y * dy, z * dz)));
+                    }
+                }
+                LastErodedPoints.Clear();
+                LastErodedPoints.AddRange(_collapseScratch);
+                RebuildMesh();
+                // 掉渣粒子(迁自 WaveSimulator: 现由 SdfVolume 自己发)
+                if (_collapseParticles == null) _collapseParticles = ErosionParticles.Create(transform);
+                if (_collapseParticles != null) _collapseParticles.Emit(_collapseScratch);
+            }
+            _cjSdf.Dispose(); _cjSupported.Dispose(); _cjQueue.Dispose(); _cjRemoved.Dispose();
+            _collapseJobRunning = false;
+        }
+
+        void OnDestroy()
+        {
+            if (_collapseJobRunning)
+            {
+                _collapseHandle.Complete();
+                _cjSdf.Dispose(); _cjSupported.Dispose(); _cjQueue.Dispose(); _cjRemoved.Dispose();
+                _collapseJobRunning = false;
             }
         }
 
