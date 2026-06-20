@@ -17,6 +17,10 @@ public class SandcastleDebugUI : MonoBehaviour
     private float _smoothDt;
     private GpuSandRenderer _gpuSand;
 
+    // 侵蚀/雕虯诊断(每 0.5s 刷一次, 避免每帧扫全体素)
+    private SdfVolume.Diag _diag;
+    private float _diagTimer;
+
     void Start()
     {
         _wave = FindObjectOfType<SimpleWave>();
@@ -30,13 +34,21 @@ public class SandcastleDebugUI : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.F1)) _show = !_show;
         // 指数平滑帧时间
         _smoothDt = Mathf.Lerp(_smoothDt, Time.unscaledDeltaTime, 0.1f);
+        // 定期刷侵蚀诊断
+        _diagTimer -= Time.unscaledDeltaTime;
+        if (_show && _diagTimer <= 0f)
+        {
+            _diagTimer = 0.5f;
+            var v = FindObjectOfType<SdfVolume>();
+            if (v != null) _diag = v.GetDiag();
+        }
     }
 
     void OnGUI()
     {
         if (!_show) return;
 
-        GUILayout.BeginArea(new Rect(10, 10, 420, 620), GUI.skin.box);
+        GUILayout.BeginArea(new Rect(10, 10, 420, 700), GUI.skin.box);
         // 实时帧率
         float fps = _smoothDt > 1e-5f ? 1f / _smoothDt : 0f;
         string path = _gpuSand != null && _gpuSand.useGpu ? "GPU" : "CPU";
@@ -48,6 +60,12 @@ public class SandcastleDebugUI : MonoBehaviour
         GUILayout.Label(Sandcastle.PerfProbe.Report());
         if (GUILayout.Button("重置计时计数"))
             Sandcastle.PerfProbe.Reset();
+
+        // ===== 侵蚀/雕虯诊断 =====
+        GUILayout.Label("─── 侵蚀/雕虯诊断 ───");
+        GUILayout.Label($"piece 数: {_diag.pieces}   base实体: {_diag.baseSolid}   最终实体: {_diag.finalSolid}");
+        GUILayout.Label($"侵蚀债(erosion>0): {_diag.erosionNonZero}   已卸载(carved): {_diag.carved}");
+        GUILayout.Label($"诈尸实体(base实但被压空): {_diag.phantom}  ←这个应趋近carved");
 
         // ===== 坐标诊断 =====
         GUILayout.Label("─── 坐标诊断 (世界 Y) ───");

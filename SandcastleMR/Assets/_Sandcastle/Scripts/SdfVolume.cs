@@ -139,6 +139,33 @@ namespace Sandcastle
         public bool ConsumeBaseDirty() { bool d = _baseDirty; _baseDirty = false; return d; }
         public bool BaseDirty => _baseDirty;
 
+        /// <summary>诊断统计: 供 DebugUI 显示侵蚀/雕虯状态。</summary>
+        public struct Diag
+        {
+            public int baseSolid;     // _sdfBase<0 体素数(解析实体)
+            public int finalSolid;    // _sdf<0 体素数(最终可见实体)
+            public int erosionNonZero;// _erosion>0 体素数(侵蚀债)
+            public int carved;        // _carved 体素数(已卸载空气)
+            public int phantom;        // base<0 但 final>=0 (被压制的诈尸实体)
+            public int pieces;
+        }
+        public Diag GetDiag()
+        {
+            var d = new Diag { pieces = _pieces.Count };
+            if (_sdfBase == null) return d;
+            for (int i = 0; i < _sdfBase.Length; i++)
+            {
+                bool bSolid = _sdfBase[i] < 0f;
+                bool fSolid = _sdf[i] < 0f;
+                if (bSolid) d.baseSolid++;
+                if (fSolid) d.finalSolid++;
+                if (_erosion[i] > 0f) d.erosionNonZero++;
+                if (_carved[i]) d.carved++;
+                if (bSolid && !fSolid) d.phantom++;
+            }
+            return d;
+        }
+
         /// <summary>运行时换了高度图/高度范围后调此, 下次重建重新烘高度场并全量重算 base。</summary>
         public void SetHeightmapDirty()
         {
