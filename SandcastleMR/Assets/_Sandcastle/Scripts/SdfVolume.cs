@@ -136,6 +136,30 @@ namespace Sandcastle
         public float[] GetBaseData() => _sdfBase;
         /// <summary>湿度场(GPU 渲染路径上传用, 湿沙变深)。</summary>
         public float[] GetWetnessData() => _wetness;
+
+        // 流体地形底: 每个 XZ 列的实时沙面高度(本地 Y)。供 GPU 浅水流体用。
+        private float[] _surfaceHeight;   // 尺寸 Nx*Nz, 本地 Y(沙面顶); 无实心列=0
+        /// <summary>导出每个 XZ 列当前实际沙面高度(本地 Y)。从 _sdf(=base+erosion, 含铲挖/塔陷)
+        /// 逐列从上往下找第一个实心体素。返回 Nx*Nz 数组(复用)。流体地形底用。
+        /// 注: 2.5D 高度场, 不表达悬空/隧道(用户已确认无此需求)。</summary>
+        public float[] GetSurfaceHeightField()
+        {
+            if (_surfaceHeight == null || _surfaceHeight.Length != Nx * Nz)
+                _surfaceHeight = new float[Nx * Nz];
+            float dy = size.y / resolutionY;
+            for (int z = 0; z < Nz; z++)
+                for (int x = 0; x < Nx; x++)
+                {
+                    float h = 0f;
+                    // 从顶往下找第一个实心(sdf<0)体素
+                    for (int y = Ny - 1; y >= 0; y--)
+                    {
+                        if (_sdf[Index(x, y, z)] < 0f) { h = y * dy; break; }
+                    }
+                    _surfaceHeight[x + z * Nx] = h;
+                }
+            return _surfaceHeight;
+        }
         /// <summary>base 是否需重算（piece 增删），供 GPU 决定是否重跑 EvaluateBase kernel</summary>
         public bool ConsumeBaseDirty() { bool d = _baseDirty; _baseDirty = false; return d; }
         public bool BaseDirty => _baseDirty;
