@@ -125,7 +125,7 @@ namespace Sandcastle
             _baseDirty = true;
             AddDirtyRegion(p.WorldBounds());
             RebuildMesh();
-            CheckCollapse();
+            // 注: 放 piece 是加材料, 不可能产生悬空块, 无需塬陷检测(省去全场BFS顿挫)。
         }
 
         /// <summary>piece 列表（只读，供 GpuSandRenderer 收集参数上传）</summary>

@@ -48,6 +48,7 @@ public class SdfPiecePlacer : MonoBehaviour
     private float _currentBakedScale;
     private float _currentRotY;
     private GameObject _preview;
+    private bool _previewIsUnitScale;  // true=mesh/prefab(自带真实尺寸,用one*scale); false=box占位(用bounds.size*scale)
 
     void Start()
     {
@@ -229,15 +230,18 @@ public class SdfPiecePlacer : MonoBehaviour
                 _preview = new GameObject("SdfPreview");
                 _preview.AddComponent<MeshFilter>().sharedMesh = asset.previewMesh;
                 _preview.AddComponent<MeshRenderer>();
+                _previewIsUnitScale = true;
             }
             else if (asset != null)
             {
                 _preview = GameObject.CreatePrimitive(PrimitiveType.Cube);
                 _preview.transform.localScale = asset.bounds.size;
+                _previewIsUnitScale = false;
             }
             else
             {
                 _preview = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                _previewIsUnitScale = false;
             }
         }
         _preview.name = "SdfPreview";
@@ -271,15 +275,14 @@ public class SdfPiecePlacer : MonoBehaviour
             _preview.transform.localScale = Vector3.one * _currentRadius * 2f;
         else
         {
-            // Baked: 应用尺寸
-            if (bakedSdfList != null && _bakedIndex < bakedSdfList.Length && bakedSdfList[_bakedIndex] != null)
-            {
-                _preview.transform.localScale = bakedSdfList[_bakedIndex].bounds.size * _currentBakedScale;
-            }
-            else
-            {
+            // 预览缩放要与实际放置一致。放置的 piece: localScale=one*_currentBakedScale, 靠SDF采样(本地=mesh原坐标)。
+            // mesh/prefab 预览自带真实尺寸 → one*scale; box占位是单位立方 → bounds.size*scale。
+            if (_previewIsUnitScale)
                 _preview.transform.localScale = Vector3.one * _currentBakedScale;
-            }
+            else if (bakedSdfList != null && _bakedIndex < bakedSdfList.Length && bakedSdfList[_bakedIndex] != null)
+                _preview.transform.localScale = bakedSdfList[_bakedIndex].bounds.size * _currentBakedScale;
+            else
+                _preview.transform.localScale = Vector3.one * _currentBakedScale;
         }
     }
 }
