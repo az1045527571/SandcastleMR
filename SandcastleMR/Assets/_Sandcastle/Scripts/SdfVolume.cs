@@ -755,8 +755,10 @@ namespace Sandcastle
                         }
             }
 
-            // ---- 新材还侵蚀债 + 雕虯固化 ----
-            // 新放 piece 让 base 变更实心(added>0)的体素: 回收 _erosion(不低于0) 并清除 carve 标记(新料重生)。
+            // ---- 新材完全填充 + 雕虯固化 ----
+            // 凡是新放 piece 让该体素成为实体(base<0)且本帧新增了实心度(added>0):
+            // 直接清零 _erosion + 清 carve —— 新材料是完全填充的新鲜体, 不继承上一帧任何侵蚀债。
+            // (原部分回收 erosion-=added 量级不匹配, 残留债让边缘变乱)。
             // 其余 carved 体素: 强制 base 抬成空气, 防被冲掉的解析实体重算时诈尸。
             for (int z = z0; z <= z1; z++)
                 for (int y = y0; y <= y1; y++)
@@ -767,12 +769,12 @@ namespace Sandcastle
                         if (incremental && oldBaseSnap != null)
                         {
                             float oldB = oldBaseSnap[(x - x0) + (y - y0) * rnx + (z - z0) * rnx * rny];
-                            added = oldB - _sdfBase[idx];  // >0 = 新增了多少实心度
+                            added = oldB - _sdfBase[idx];  // >0 = 本帧新增了多少实心度
                         }
-                        if (added > 0f)
+                        if (added > 0f && _sdfBase[idx] < 0f)
                         {
-                            // 新材料: 还债 + 重生
-                            if (_erosion[idx] > 0f) _erosion[idx] = Mathf.Max(0f, _erosion[idx] - added);
+                            // 新材料且成实体: 完全填充, 清零侵蚀债 + 重生
+                            _erosion[idx] = 0f;
                             _carved[idx] = false;
                         }
                         else if (_carved[idx])
