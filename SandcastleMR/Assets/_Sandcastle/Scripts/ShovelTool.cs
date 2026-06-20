@@ -184,6 +184,7 @@ namespace Sandcastle
         {
             int n = _volume.BoxBrush(center, boxHalfExtents, rotationY, dig: true, brushAmount);
             _volume.RebuildMesh();
+            _volume.CheckCollapse();   // 挖空地基后, 上方无支撑残块塔落
             IsLoaded = true;
             UpdateLoadedVisual();
             OnDig?.Invoke();

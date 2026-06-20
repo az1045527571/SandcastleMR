@@ -125,6 +125,7 @@ namespace Sandcastle
             _baseDirty = true;
             AddDirtyRegion(p.WorldBounds());
             RebuildMesh();
+            CheckCollapse();
         }
 
         /// <summary>piece 列表（只读，供 GpuSandRenderer 收集参数上传）</summary>
@@ -189,7 +190,17 @@ namespace Sandcastle
                 _baseDirty = true;
                 AddDirtyRegion(p.WorldBounds());   // 删除位置也要重算(恢复成沙面)
                 RebuildMesh();
+                CheckCollapse();
             }
+        }
+
+        // 塬陷检测缓冲点(迁自 WaveSimulator: 现在放/删 piece 后触发, 不再依赖海浪)
+        private readonly System.Collections.Generic.List<Vector3> _collapseScratch = new System.Collections.Generic.List<Vector3>(48);
+        /// <summary>放/删 piece 后检测无支撑残块并移除(连通域)。原由海浪驱动, 现迁到构建事件。</summary>
+        public void CheckCollapse()
+        {
+            int removed = RemoveUnsupported(_collapseScratch);
+            if (removed > 0) RebuildMesh();
         }
 
         /// <summary>世界坐标 → 体素本地坐标（[0,size] 范围）。</summary>

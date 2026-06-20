@@ -42,7 +42,7 @@ public class SandcastleBootstrap : MonoBehaviour
 
         BuildLighting();
         BuildBeach();
-        BuildWater();
+        // BuildWater() 已移除: 海浪侵蚀/静态水面都停用, 准备接入新 GPU 浅水流体方案。
         BuildCamera();
     }
 
@@ -152,17 +152,9 @@ public class SandcastleBootstrap : MonoBehaviour
         }
     }
 
-    void BuildWater()
-    {
-        var waterGo = new GameObject("Water");
-        waterGo.transform.SetParent(transform, false);
-        waterGo.AddComponent<SimpleWave>();
-
-        // 海浪侵蚀模拟器
-        var waveGo = new GameObject("WaveSimulator");
-        waveGo.transform.SetParent(transform, false);
-        waveGo.AddComponent<WaveSimulator>();
-    }
+    // 【水方案重做中 2026-06】海浪侵蚀(WaveSimulator)、假水面(SimpleWave)、静态全局水位全部停用。
+    // 代码保留供回滚。新水系统就绪后重接。现阶段沙子在无水环境下独立验证。
+    // 塔陷检测(RemoveUnsupported)已迁至 SdfVolume 放/删 piece 与铲子挖后触发, 不再依赖海浪。
 
     void BuildCamera()
     {

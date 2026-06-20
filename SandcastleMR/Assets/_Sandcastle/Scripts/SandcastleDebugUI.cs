@@ -114,6 +114,8 @@ public class SandcastleDebugUI : MonoBehaviour
         }
         float globalWaterY = Shader.GetGlobalFloat("_GlobalWaterY");
         GUILayout.Label($"Shader _GlobalWaterY: {globalWaterY:F3}");
+        if (_wave == null && _waveSim == null)
+            GUILayout.Label("[海浪系统已停用, 水位滑杆无效—等新水方案]");
 
         var cam = Camera.main;
         if (cam != null)
