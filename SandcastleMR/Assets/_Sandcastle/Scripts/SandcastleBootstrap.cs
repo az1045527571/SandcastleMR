@@ -14,6 +14,12 @@ public class SandcastleBootstrap : MonoBehaviour
     public Vector2 beachSize = new Vector2(20f, 20f);
     public Color sandColor = new Color(0.92f, 0.82f, 0.62f);
 
+    [Header("地形高度图(可选)")]
+    [Tooltip("灰度高度图(需开 Read/Write)。拖这里赋给运行时生成的 SdfVolume。为空=平地/斜坡")]
+    public Texture2D terrainHeightmap;
+    public float heightmapMinY = 0.05f;
+    public float heightmapMaxY = 0.30f;
+
     [Header("光照")]
     public Color sunColor = new Color(1f, 0.95f, 0.85f);
     public float sunIntensity = 1.2f;
@@ -87,6 +93,12 @@ public class SandcastleBootstrap : MonoBehaviour
         sdfMr.sharedMaterial = sdfMat;
         var volume = sdfGo.AddComponent<SdfVolume>();
         // size 用 SdfVolume 默认 (5,1.5,5)，不覆写
+        if (terrainHeightmap != null)
+        {
+            volume.heightmap = terrainHeightmap;
+            volume.heightmapMinY = heightmapMinY;
+            volume.heightmapMaxY = heightmapMaxY;
+        }
         sdfGo.AddComponent<SdfVolumeBoundsVisualizer>();
         // GPU 沙子渲染器（阶段一）：G 键切换 GPU/CPU 路径对照
         sdfGo.AddComponent<GpuSandRenderer>();
