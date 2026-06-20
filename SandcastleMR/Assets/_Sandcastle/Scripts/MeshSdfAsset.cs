@@ -11,6 +11,8 @@ namespace Sandcastle
         public Bounds bounds;
         public Vector3Int resolution = new Vector3Int(32, 32, 32);
         public Texture3D sdfTex;
+        [Tooltip("可选: 放置预览用的原 mesh(烘焙源模型)。填了放置预览就用它而不是 box 占位。")]
+        public Mesh previewMesh;
 
         [System.NonSerialized]
         private float[] _cachedSdf;

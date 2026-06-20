@@ -196,11 +196,31 @@ namespace Sandcastle
 
         // 塬陷检测缓冲点(迁自 WaveSimulator: 现在放/删 piece 后触发, 不再依赖海浪)
         private readonly System.Collections.Generic.List<Vector3> _collapseScratch = new System.Collections.Generic.List<Vector3>(48);
-        /// <summary>放/删 piece 后检测无支撑残块并移除(连通域)。原由海浪驱动, 现迁到构建事件。</summary>
+        private bool _collapsePending;
+        private float _collapseTimer;
+        [Tooltip("放/删/铲挖后多久跳一次塬陷检测(秒)。节流, 避免每次操作同步跑全场BFS卡顿。")]
+        public float collapseCheckDelay = 0.2f;
+
+        /// <summary>放/删 piece 或铲挖后请求塬陷检测。节流: 不立即跑, 标记 pending, 停手 collapseCheckDelay 后在 Update 跑一次。
+        /// (RemoveUnsupported 是全场242万体素BFS, 每次操作同步跑会明显卡顿)。</summary>
         public void CheckCollapse()
         {
-            int removed = RemoveUnsupported(_collapseScratch);
-            if (removed > 0) RebuildMesh();
+            _collapsePending = true;
+            _collapseTimer = collapseCheckDelay;
+        }
+
+        void Update()
+        {
+            if (_collapsePending)
+            {
+                _collapseTimer -= Time.deltaTime;
+                if (_collapseTimer <= 0f)
+                {
+                    _collapsePending = false;
+                    int removed = RemoveUnsupported(_collapseScratch);
+                    if (removed > 0) RebuildMesh();
+                }
+            }
         }
 
         /// <summary>世界坐标 → 体素本地坐标（[0,size] 范围）。</summary>

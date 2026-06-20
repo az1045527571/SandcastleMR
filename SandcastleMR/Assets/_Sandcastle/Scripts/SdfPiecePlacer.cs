@@ -217,15 +217,23 @@ public class SdfPiecePlacer : MonoBehaviour
         }
         else
         {
-            // Baked 模式：优先用 previewPrefabs，没有就用包围盒立方体占位
+            var asset = (bakedSdfList != null && _bakedIndex < bakedSdfList.Length) ? bakedSdfList[_bakedIndex] : null;
+            // Baked 模式预览优先级: previewPrefabs > asset.previewMesh > box 占位
             if (previewPrefabs != null && _bakedIndex < previewPrefabs.Length && previewPrefabs[_bakedIndex] != null)
             {
                 _preview = Instantiate(previewPrefabs[_bakedIndex]);
             }
-            else if (bakedSdfList != null && _bakedIndex < bakedSdfList.Length && bakedSdfList[_bakedIndex] != null)
+            else if (asset != null && asset.previewMesh != null)
+            {
+                // 用烘焙源 mesh(如 baolei) 做预览, 提示性强
+                _preview = new GameObject("SdfPreview");
+                _preview.AddComponent<MeshFilter>().sharedMesh = asset.previewMesh;
+                _preview.AddComponent<MeshRenderer>();
+            }
+            else if (asset != null)
             {
                 _preview = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                _preview.transform.localScale = bakedSdfList[_bakedIndex].bounds.size;
+                _preview.transform.localScale = asset.bounds.size;
             }
             else
             {
