@@ -65,6 +65,7 @@ namespace Sandcastle
         private float[] _sdfBase;
         private float[] _erosion;
         private float[] _wetness;  // 每个体素的湿度 0~1
+        private bool[] _carved;    // 持久: 被侵蚀/塔陷冲成空气的体素。base 重算后强制保持空气, 防解析实体诈尸。
         private float[] _heightField;     // Nx*Nz 局部沙面高度(本地Y), 高度图烘焙缓存; null=用斜坡公式
         private bool _heightFieldDirty = true;
         private bool _baseDirty = true;
@@ -100,6 +101,7 @@ namespace Sandcastle
             _sdfBase = new float[Nx * Ny * Nz];
             _erosion = new float[Nx * Ny * Nz];
             _wetness = new float[Nx * Ny * Nz];
+            _carved = new bool[Nx * Ny * Nz];
         }
 
         void Start()
@@ -377,6 +379,7 @@ namespace Sandcastle
                         int idx = Index(x, y, z);
                         if (_sdf[idx] >= 0f || _supported[idx]) continue;
                         _erosion[idx] = Mathf.Max(_erosion[idx], -_sdfBase[idx] + 0.01f);
+                        _carved[idx] = true;   // 塔陷碎块打掉 = 永久空气
                         removed++;
                         if (removedPointsOut != null && removedPointsOut.Count < maxPoints && (x + y + z) % 3 == 0)
                             removedPointsOut.Add(LocalToWorld(new Vector3(x * dx, y * dy, z * dz)));
@@ -448,6 +451,8 @@ namespace Sandcastle
                             Vector3 lp = new Vector3(x * (size.x / resolutionX), localY, z * (size.z / resolutionZ));
                             LastErodedPoints.Add(LocalToWorld(lp));
                         }
+                        // 冲成空气则标记为已雕虯, base 重算不再诈尸
+                        if (_sdfBase[idx] + _erosion[idx] > 0f) _carved[idx] = true;
                     }
                 }
             }
@@ -723,22 +728,32 @@ namespace Sandcastle
                         }
             }
 
-            // ---- 新材还侵蚀债 ----
-            // 新放 piece 让 base 变更实心(newBase < oldBase)的体素, 按新增量回收 _erosion, 不低于0。
-            // 这样后放的形状是新鲜材料, 不被该区域旧侵蚀债抵扣; 刪 piece(base 变空)不加债。
-            if (incremental && oldBaseSnap != null)
-            {
-                for (int z = z0; z <= z1; z++)
-                    for (int y = y0; y <= y1; y++)
-                        for (int x = x0; x <= x1; x++)
+            // ---- 新材还侵蚀债 + 雕虯固化 ----
+            // 新放 piece 让 base 变更实心(added>0)的体素: 回收 _erosion(不低于0) 并清除 carve 标记(新料重生)。
+            // 其余 carved 体素: 强制 base 抬成空气, 防被冲掉的解析实体重算时诈尸。
+            for (int z = z0; z <= z1; z++)
+                for (int y = y0; y <= y1; y++)
+                    for (int x = x0; x <= x1; x++)
+                    {
+                        int idx = Index(x, y, z);
+                        float added = 0f;
+                        if (incremental && oldBaseSnap != null)
                         {
-                            int idx = Index(x, y, z);
                             float oldB = oldBaseSnap[(x - x0) + (y - y0) * rnx + (z - z0) * rnx * rny];
-                            float added = oldB - _sdfBase[idx];  // >0 = 新增了多少实心度
-                            if (added > 0f && _erosion[idx] > 0f)
-                                _erosion[idx] = Mathf.Max(0f, _erosion[idx] - added);
+                            added = oldB - _sdfBase[idx];  // >0 = 新增了多少实心度
                         }
-            }
+                        if (added > 0f)
+                        {
+                            // 新材料: 还债 + 重生
+                            if (_erosion[idx] > 0f) _erosion[idx] = Mathf.Max(0f, _erosion[idx] - added);
+                            _carved[idx] = false;
+                        }
+                        else if (_carved[idx])
+                        {
+                            // 已雕虯且无新料: 固化为空气
+                            if (_sdfBase[idx] < 0.01f) _sdfBase[idx] = 0.01f;
+                        }
+                    }
         }
 
         /// <summary>体积局部坐标下的 box SDF。</summary>
