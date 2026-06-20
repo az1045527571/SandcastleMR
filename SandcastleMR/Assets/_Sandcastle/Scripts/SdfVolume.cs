@@ -372,89 +372,52 @@ namespace Sandcastle
             return affected;
         }
 
-        // 连通域检测复用缓冲（避免每帧 alloc）
-        private bool[] _supported;
-        private readonly Queue<int> _floodQueue = new Queue<int>(4096);
+        // 连通域检测已 Burst Job 化(RemoveUnsupportedJob), 不再需要托管缓冲。
 
         /// <summary>
-        /// 连通域检测：以沙箱最底几层实心体素作为“地基”种子，6 邻域 flood fill 向上扩散。
+        /// 连通域检测: 以沙箱最底几层实心体素作为“地基”种子, 6 邻域 flood fill 向上扩散。
         /// 凡是没和地基连通的实心体素（无支撑）立即擦除，并返回其世界坐标供掉渣粒子使用。
-        /// 返回被移除的体素数。调用后需 RebuildMesh()。
+        /// 返回被移除的体素数。调用后需 RebuildMesh()。[已 Burst Job 化]
         /// </summary>
         public int RemoveUnsupported(System.Collections.Generic.List<Vector3> removedPointsOut, int maxPoints = 48)
         {
             PerfProbe.Begin("CPU.RemoveUnsupported");
             int total = _sdf.Length;
-            if (_supported == null || _supported.Length != total)
-                _supported = new bool[total];
-            else
-                System.Array.Clear(_supported, 0, total);
-            _floodQueue.Clear();
-
             float dx = size.x / resolutionX;
             float dy = size.y / resolutionY;
             float dz = size.z / resolutionZ;
 
-            // 地基种子：沙箱最底两层体素（y<=1）中的实心体素
-            for (int z = 0; z < Nz; z++)
-            {
-                for (int y = 0; y <= 1; y++)
-                {
-                    for (int x = 0; x < Nx; x++)
-                    {
-                        int idx = Index(x, y, z);
-                        if (_sdf[idx] >= 0f) continue;
-                        _supported[idx] = true;
-                        _floodQueue.Enqueue(idx);
-                    }
-                }
-            }
+            var sdfNative = new NativeArray<float>(total, Allocator.TempJob);
+            sdfNative.CopyFrom(_sdf);
+            var supported = new NativeArray<byte>(total, Allocator.TempJob);
+            var queue = new NativeArray<int>(total, Allocator.TempJob);
+            var removedIdx = new NativeList<int>(256, Allocator.TempJob);
 
-            // BFS（6 邻）
-            while (_floodQueue.Count > 0)
+            var job = new RemoveUnsupportedJob
             {
-                int idx = _floodQueue.Dequeue();
-                int x = idx % Nx;
-                int y = (idx / Nx) % Ny;
-                int z = idx / (Nx * Ny);
-                TrySpread(x - 1, y, z);
-                TrySpread(x + 1, y, z);
-                TrySpread(x, y - 1, z);
-                TrySpread(x, y + 1, z);
-                TrySpread(x, y, z - 1);
-                TrySpread(x, y, z + 1);
-            }
+                nx = Nx, ny = Ny, nz = Nz,
+                sdf = sdfNative, supported = supported, queue = queue, removedIdx = removedIdx,
+            };
+            job.Schedule().Complete();
 
-            // 擦除所有实心但无支撑的体素
-            int removed = 0;
+            // 擦除(改 _erosion/_carved)在主线程做
+            int removed = removedIdx.Length;
             if (removedPointsOut != null) removedPointsOut.Clear();
-            for (int z = 0; z < Nz; z++)
+            for (int n = 0; n < removed; n++)
             {
-                for (int y = 0; y < Ny; y++)
+                int idx = removedIdx[n];
+                _erosion[idx] = Mathf.Max(_erosion[idx], -_sdfBase[idx] + 0.01f);
+                _carved[idx] = true;   // 塔陷碎块打掉 = 永久空气
+                if (removedPointsOut != null && removedPointsOut.Count < maxPoints && (n % 3) == 0)
                 {
-                    for (int x = 0; x < Nx; x++)
-                    {
-                        int idx = Index(x, y, z);
-                        if (_sdf[idx] >= 0f || _supported[idx]) continue;
-                        _erosion[idx] = Mathf.Max(_erosion[idx], -_sdfBase[idx] + 0.01f);
-                        _carved[idx] = true;   // 塔陷碎块打掉 = 永久空气
-                        removed++;
-                        if (removedPointsOut != null && removedPointsOut.Count < maxPoints && (x + y + z) % 3 == 0)
-                            removedPointsOut.Add(LocalToWorld(new Vector3(x * dx, y * dy, z * dz)));
-                    }
+                    int x = idx % Nx, y = (idx / Nx) % Ny, z = idx / (Nx * Ny);
+                    removedPointsOut.Add(LocalToWorld(new Vector3(x * dx, y * dy, z * dz)));
                 }
             }
+
+            sdfNative.Dispose(); supported.Dispose(); queue.Dispose(); removedIdx.Dispose();
             PerfProbe.End("CPU.RemoveUnsupported");
             return removed;
-        }
-
-        void TrySpread(int x, int y, int z)
-        {
-            if (x < 0 || x >= Nx || y < 0 || y >= Ny || z < 0 || z >= Nz) return;
-            int idx = Index(x, y, z);
-            if (_supported[idx] || _sdf[idx] >= 0f) return;
-            _supported[idx] = true;
-            _floodQueue.Enqueue(idx);
         }
 
         /// <summary>
