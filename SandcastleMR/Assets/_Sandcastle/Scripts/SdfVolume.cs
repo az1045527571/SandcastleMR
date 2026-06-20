@@ -670,6 +670,18 @@ namespace Sandcastle
             var sdfNative = new NativeArray<float>(_sdfBase.Length, Allocator.TempJob);
             sdfNative.CopyFrom(_sdfBase);   // 保留范围外旧值
 
+            // 增量放置时, 存脏区旧 base 快照, 重算后用于“新材还侵蚀债”。全量重建(高度图变)不还债。
+            bool incremental = range.HasValue;
+            float[] oldBaseSnap = null;
+            if (incremental)
+            {
+                oldBaseSnap = new float[rnx * rny * rnz];
+                for (int z = z0; z <= z1; z++)
+                    for (int y = y0; y <= y1; y++)
+                        for (int x = x0; x <= x1; x++)
+                            oldBaseSnap[(x - x0) + (y - y0) * rnx + (z - z0) * rnx * rny] = _sdfBase[Index(x, y, z)];
+            }
+
             // 高度场: 有高度图则传 Nx*Nz 数组, 无则传长度1的哑元(job 内退斜坡公式)
             if (_heightFieldDirty) BuildHeightField();
             bool useHeightmap = _heightField != null;
@@ -708,6 +720,23 @@ namespace Sandcastle
                             float di = bp.SampleSdf(wp);
                             int idx = Index(x, y, z);
                             _sdfBase[idx] = SmoothMin(_sdfBase[idx], di, smoothK);
+                        }
+            }
+
+            // ---- 新材还侵蚀债 ----
+            // 新放 piece 让 base 变更实心(newBase < oldBase)的体素, 按新增量回收 _erosion, 不低于0。
+            // 这样后放的形状是新鲜材料, 不被该区域旧侵蚀债抵扣; 刪 piece(base 变空)不加债。
+            if (incremental && oldBaseSnap != null)
+            {
+                for (int z = z0; z <= z1; z++)
+                    for (int y = y0; y <= y1; y++)
+                        for (int x = x0; x <= x1; x++)
+                        {
+                            int idx = Index(x, y, z);
+                            float oldB = oldBaseSnap[(x - x0) + (y - y0) * rnx + (z - z0) * rnx * rny];
+                            float added = oldB - _sdfBase[idx];  // >0 = 新增了多少实心度
+                            if (added > 0f && _erosion[idx] > 0f)
+                                _erosion[idx] = Mathf.Max(0f, _erosion[idx] - added);
                         }
             }
         }
