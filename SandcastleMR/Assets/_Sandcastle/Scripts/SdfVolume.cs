@@ -73,6 +73,12 @@ namespace Sandcastle
         private int Ny => resolutionY + 1;
         private int Nz => resolutionZ + 1;
 
+        // 供水流体等外部对齐网格(只读)
+        public int GridNx => Nx;
+        public int GridNz => Nz;
+        public float CellSizeX => size.x / resolutionX;
+        public float CellSizeZ => size.z / resolutionZ;
+
         // 注册的 SDF 形状
         private readonly List<SdfPiece> _pieces = new List<SdfPiece>();
 

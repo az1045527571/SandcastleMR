@@ -1,0 +1,115 @@
+// 浅水高度场 / 虚拟管道模型 (Virtual Pipes Shallow Water), 2.5D。
+// 在 SDF 框 XZ 平面铺 W×H 网格, 每格存水深 h, 4方向管道存流量 flux(L/R/B/T)。
+// 地形底 terrain = 沙面高度(本地Y)。总水位 = terrain + h。
+// 流程: UpdateFlux(按相邻总水位差累加流量, 出流不超过本格存水) → ApplyFlux(净流入更新h) → 潮汐源。
+// 封闭洼地各自积水成独立池塘(水从高往低流, 被沙墙挡住)。
+// 参考: Mei et al. 2007 "Fast Hydraulic Erosion Simulation"。
+
+#pragma kernel UpdateFlux
+#pragma kernel ApplyFlux
+#pragma kernel ApplyTide
+
+uint _W, _H;            // 网格尺寸(XZ)
+float _CellSize;        // 格子物理边长(米)
+float _Dt;              // 时间步
+float _Gravity;         // 重力加速度(调流速)
+float _Damping;         // 流量阻尼 0~1(每步乘, 衰减抖动)
+float _MinDepth;        // 低于此水深视为干
+
+// 地形底(沙面本地Y, W*H), 由 SdfVolume.GetSurfaceHeightField 上传
+StructuredBuffer<float> _Terrain;
+// 水深 h (W*H), 读写
+RWStructuredBuffer<float> _Depth;
+// 流量: 每格4方向 [idx*4 + dir], dir: 0=-X 1=+X 2=-Z 3=+Z
+RWStructuredBuffer<float> _Flux;
+
+// 潮汐: 目标总水位(世界化为本地Y)。ApplyTide 把低于目标的格子补水
+float _TideTargetLevel;
+float _TideFillRate;    // 每步向目标逼近的速率
+
+uint Idx(uint x, uint z) { return x + z * _W; }
+bool InBounds(int x, int z) { return x >= 0 && x < (int)_W && z >= 0 && z < (int)_H; }
+
+[numthreads(8, 8, 1)]
+void UpdateFlux(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _W || id.y >= _H) return;
+    uint x = id.x, z = id.y;
+    uint i = Idx(x, z);
+
+    float terr = _Terrain[i];
+    float d = _Depth[i];
+    float level = terr + d;   // 本格总水位
+
+    // 4 邻方向偏移
+    int2 dirs[4] = { int2(-1,0), int2(1,0), int2(0,-1), int2(0,1) };
+    float newFlux[4];
+    float outSum = 0;
+
+    [unroll]
+    for (int k = 0; k < 4; k++)
+    {
+        int nx = (int)x + dirs[k].x;
+        int nz = (int)z + dirs[k].y;
+        float f = _Flux[i * 4 + k];
+        if (!InBounds(nx, nz))
+        {
+            newFlux[k] = 0;   // 边界不出流(闭边界, 水留在框内)
+            continue;
+        }
+        uint ni = Idx((uint)nx, (uint)nz);
+        float nLevel = _Terrain[ni] + _Depth[ni];
+        float dh = level - nLevel;   // 水位差, >0 = 本格高, 往邻格流
+        // 累加流量(加速度 = g * 水位差 / 距离), 阻尼
+        f = (f + _Dt * _Gravity * dh / _CellSize) * _Damping;
+        f = max(f, 0);   // 只存正向出流, 负向由邻格自己算
+        newFlux[k] = f;
+        outSum += f;
+    }
+
+    // 出流总量不能超过本格当前存水(否则水深变负)。按比例缩放。
+    float avail = d * _CellSize * _CellSize;
+    float outVol = outSum * _Dt;
+    float scale = (outVol > avail && outVol > 1e-8) ? (avail / outVol) : 1.0;
+
+    [unroll]
+    for (int k2 = 0; k2 < 4; k2++)
+        _Flux[i * 4 + k2] = newFlux[k2] * scale;
+}
+
+[numthreads(8, 8, 1)]
+void ApplyFlux(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _W || id.y >= _H) return;
+    uint x = id.x, z = id.y;
+    uint i = Idx(x, z);
+
+    // 本格出流 = 自己4方向 flux 之和; 入流 = 邻格朝本格的 flux
+    float outF = _Flux[i*4+0] + _Flux[i*4+1] + _Flux[i*4+2] + _Flux[i*4+3];
+
+    float inF = 0;
+    // 邻格朝本格: 邻格在 -X(我在它+X=dir1), +X(我在它-X=dir0), -Z(dir3), +Z(dir2)
+    if (InBounds((int)x-1,(int)z)) inF += _Flux[Idx(x-1,z)*4 + 1];
+    if (InBounds((int)x+1,(int)z)) inF += _Flux[Idx(x+1,z)*4 + 0];
+    if (InBounds((int)x,(int)z-1)) inF += _Flux[Idx(x,z-1)*4 + 3];
+    if (InBounds((int)x,(int)z+1)) inF += _Flux[Idx(x,z+1)*4 + 2];
+
+    float netVol = (inF - outF) * _Dt;
+    float d = _Depth[i] + netVol / (_CellSize * _CellSize);
+    _Depth[i] = max(d, 0);
+}
+
+[numthreads(8, 8, 1)]
+void ApplyTide(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _W || id.y >= _H) return;
+    uint i = Idx(id.x, id.y);
+    float terr = _Terrain[i];
+    float level = terr + _Depth[i];
+    // 目标水位高于当前 → 补水(模拟涨潮从框内整体抬升)
+    // 目标低于当前且本格水深>0 → 抽水(退潮)
+    float targetDepth = max(_TideTargetLevel - terr, 0);
+    float d = _Depth[i];
+    d = lerp(d, targetDepth, saturate(_TideFillRate * _Dt));
+    _Depth[i] = max(d, 0);
+}
