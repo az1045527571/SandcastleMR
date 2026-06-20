@@ -30,7 +30,9 @@ namespace Sandcastle
         public int rnx, rny, rnz;          // 重算范围尺寸
         public float dx, dy, dz;
         public float3 size;
-        public float sandThickness, sandInset, smoothK;
+        public float sandThickness, sandInset, sandSlope, smoothK;
+        public bool useHeightmap;
+        [ReadOnly] public NativeArray<float> heightField;  // nx*nz 局部沙面高度(本Y); useHeightmap=false 时不用
         public float4x4 localToWorld;      // 体积本地(角落原点-中心)→世界
 
         [ReadOnly] public NativeArray<PieceData> pieces;
@@ -38,6 +40,19 @@ namespace Sandcastle
 
         [NativeDisableParallelForRestriction]
         public NativeArray<float> sdfBase;  // 全量输出, 只写范围内索引
+
+        // 双线性采样 nx*nz 高度场(按顶点索引 fx,fz)
+        float SampleHeight(float fx, float fz)
+        {
+            fx = math.clamp(fx, 0f, nx - 1.0001f);
+            fz = math.clamp(fz, 0f, nz - 1.0001f);
+            int x0 = (int)fx, z0 = (int)fz;
+            int x1 = math.min(x0 + 1, nx - 1), z1 = math.min(z0 + 1, nz - 1);
+            float tx = fx - x0, tz = fz - z0;
+            float h00 = heightField[x0 + z0 * nx], h10 = heightField[x1 + z0 * nx];
+            float h01 = heightField[x0 + z1 * nx], h11 = heightField[x1 + z1 * nx];
+            return math.lerp(math.lerp(h00, h10, tx), math.lerp(h01, h11, tx), tz);
+        }
 
         static float SmoothMin(float a, float b, float k)
         {
@@ -97,10 +112,21 @@ namespace Sandcastle
             float3 localPos = new float3(x * dx, y * dy, z * dz);
             float3 worldPos = math.mul(localToWorld, new float4(localPos - size * 0.5f, 1f)).xyz;
 
-            // 沙层 box
-            float3 boxCenter = new float3(size.x * 0.5f, sandThickness * 0.5f, size.z * 0.5f);
-            float3 boxHalf = new float3(size.x * 0.5f - sandInset, sandThickness * 0.5f, size.z * 0.5f - sandInset);
+            // 沙层 box (侧壁+底)。顶抬高到最高沙面之上, 让沙面(高度图/斜面)成为唯一顶面定义。
+            float boxTop = size.y;  // 抬到体积顶, 始终高于任意沙面; 顶面交给下面 planeDist 控
+            float3 boxCenter = new float3(size.x * 0.5f, boxTop * 0.5f, size.z * 0.5f);
+            float3 boxHalf = new float3(size.x * 0.5f - sandInset, boxTop * 0.5f, size.z * 0.5f - sandInset);
             float d = SdfBoxLocal(localPos, boxCenter, boxHalf);
+
+            // 沙面高度: 有高度图则双线性采样(本列 XZ 顶点), 否则用 +Z 斜坡公式。
+            // 用水平平面近似截顶: planeDist = y - surfaceY (竖直距离), 与原 box 顶面一致。
+            float surfaceY;
+            if (useHeightmap)
+                surfaceY = SampleHeight(localPos.x / dx, localPos.z / dz);
+            else
+                surfaceY = sandThickness + sandSlope * (localPos.z - size.z * 0.5f);
+            float planeDist = localPos.y - surfaceY;
+            d = math.max(d, planeDist);
 
             for (int i = 0; i < pieces.Length; i++)
             {

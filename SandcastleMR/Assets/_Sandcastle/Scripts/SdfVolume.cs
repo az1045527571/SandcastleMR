@@ -32,6 +32,16 @@ namespace Sandcastle
         public float sandLayerThickness = 0.15f;
         [Tooltip("沙层 XZ 向内缩多少（米），让 MC 能封住侧壁")]
         public float sandInset = 0.0f;
+        [Tooltip("海滩坡度：沙面沿 +Z 每单位高度变化。仅在未指定高度图时生效。0=平地")]
+        public float sandSlope = 0.0f;
+
+        [Header("高度图地形")]
+        [Tooltip("可选。灰度高度图(需开 Read/Write)。U轴→X, V轴→Z。为空时用斜坡公式")]
+        public Texture2D heightmap;
+        [Tooltip("高度图灰度 0 对应的沙面高度(本地 Y, 从体积底算)")]
+        public float heightmapMinY = 0.05f;
+        [Tooltip("高度图灰度 1 对应的沙面高度(本地 Y)")]
+        public float heightmapMaxY = 0.30f;
 
         [Header("Smooth Union")]
         [Tooltip("smooth min 平滑系数。越大融合越柔和但会损失细节")]
@@ -55,6 +65,8 @@ namespace Sandcastle
         private float[] _sdfBase;
         private float[] _erosion;
         private float[] _wetness;  // 每个体素的湿度 0~1
+        private float[] _heightField;     // Nx*Nz 局部沙面高度(本地Y), 高度图烘焙缓存; null=用斜坡公式
+        private bool _heightFieldDirty = true;
         private bool _baseDirty = true;
         private int Nx => resolutionX + 1;
         private int Ny => resolutionY + 1;
@@ -124,6 +136,22 @@ namespace Sandcastle
         /// <summary>base 是否需重算（piece 增删），供 GPU 决定是否重跑 EvaluateBase kernel</summary>
         public bool ConsumeBaseDirty() { bool d = _baseDirty; _baseDirty = false; return d; }
         public bool BaseDirty => _baseDirty;
+
+        /// <summary>运行时换了高度图/高度范围后调此, 下次重建重新烘高度场并全量重算 base。</summary>
+        public void SetHeightmapDirty()
+        {
+            _heightFieldDirty = true;
+            _baseDirty = true;
+            _hasDirtyRegion = false;  // 强制全量重算
+            RebuildMesh();
+        }
+
+#if UNITY_EDITOR
+        void OnValidate()
+        {
+            if (Application.isPlaying && _sdfBase != null) _heightFieldDirty = true;
+        }
+#endif
 
         public void Unregister(SdfPiece p)
         {
@@ -545,6 +573,32 @@ namespace Sandcastle
             return r;
         }
 
+        /// <summary>把高度图烘成 Nx*Nz 局部沙面高度数组(本地Y)。无高度图则置 null(走斜坡公式)。
+        /// 高度图须开 Read/Write。U→X, V→Z, 双线性采样。</summary>
+        void BuildHeightField()
+        {
+            _heightFieldDirty = false;
+            if (heightmap == null) { _heightField = null; return; }
+            if (!heightmap.isReadable)
+            {
+                Debug.LogWarning($"[SdfVolume] 高度图 '{heightmap.name}' 未开 Read/Write, 退回斜坡公式。", this);
+                _heightField = null; return;
+            }
+            if (_heightField == null || _heightField.Length != Nx * Nz)
+                _heightField = new float[Nx * Nz];
+            for (int z = 0; z < Nz; z++)
+            {
+                float v = Nz > 1 ? (float)z / (Nz - 1) : 0f;
+                for (int x = 0; x < Nx; x++)
+                {
+                    float u = Nx > 1 ? (float)x / (Nx - 1) : 0f;
+                    // 双线性采样灰度(用 r 通道)
+                    float g = heightmap.GetPixelBilinear(u, v).r;
+                    _heightField[x + z * Nx] = Mathf.Lerp(heightmapMinY, heightmapMaxY, g);
+                }
+            }
+        }
+
         /// <summary>重算基础 SDF。range=null 时全量; 否则只重算指定体素范围。
         /// 球/盒/样条走 Burst 并行 job; bakedmesh 只在其局部区 CPU 补算 SmoothMin。</summary>
         void EvaluateBase(VoxelRange? range = null)
@@ -616,20 +670,27 @@ namespace Sandcastle
             var sdfNative = new NativeArray<float>(_sdfBase.Length, Allocator.TempJob);
             sdfNative.CopyFrom(_sdfBase);   // 保留范围外旧值
 
+            // 高度场: 有高度图则传 Nx*Nz 数组, 无则传长度1的哑元(job 内退斜坡公式)
+            if (_heightFieldDirty) BuildHeightField();
+            bool useHeightmap = _heightField != null;
+            var heightNative = new NativeArray<float>(useHeightmap ? _heightField.Length : 1, Allocator.TempJob);
+            if (useHeightmap) heightNative.CopyFrom(_heightField);
+
             var job = new EvaluateBaseJob
             {
                 nx = Nx, ny = Ny, nz = Nz,
                 rx0 = x0, ry0 = y0, rz0 = z0, rnx = rnx, rny = rny, rnz = rnz,
                 dx = dx, dy = dy, dz = dz,
                 size = size,
-                sandThickness = sandLayerThickness, sandInset = sandInset, smoothK = smoothK,
+                sandThickness = sandLayerThickness, sandInset = sandInset, sandSlope = sandSlope, smoothK = smoothK,
+                useHeightmap = useHeightmap, heightField = heightNative,
                 localToWorld = transform.localToWorldMatrix,
                 pieces = pieces, splinePts = splinePts, sdfBase = sdfNative,
             };
             job.Schedule(rangeCount, 64).Complete();
             sdfNative.CopyTo(_sdfBase);
 
-            pieces.Dispose(); splinePts.Dispose(); sdfNative.Dispose();
+            pieces.Dispose(); splinePts.Dispose(); sdfNative.Dispose(); heightNative.Dispose();
 
             // ---- bakedmesh: CPU 在各自局部区补算 SmoothMin ----
             foreach (var bp in bakedPieces)
