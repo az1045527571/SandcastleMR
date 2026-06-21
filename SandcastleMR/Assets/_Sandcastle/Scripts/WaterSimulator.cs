@@ -22,9 +22,11 @@ namespace Sandcastle
         [Tooltip("重力(调流速)")]
         public float gravity = 9.81f;
         [Tooltip("流量阻尼 0~1(每步乘, 抑制抖动)")]
-        [Range(0.9f, 1f)] public float damping = 0.98f;
+        [Range(0.9f, 1f)] public float damping = 0.96f;
         [Tooltip("低于此水深视为干(米)")]
         public float minDepth = 0.002f;
+        [Tooltip("死水带: 相邻总水位差小于此不驱动水流(米)。压住体素阶梯地形激发的波纹。约一个体素层高")]
+        public float deadBand = 0.02f;
 
         [Header("潮汐")]
         [Tooltip("目标水位(相对沙箱底的本地Y, 米)。水会涨退逼近此位")]
@@ -142,13 +144,19 @@ namespace Sandcastle
             compute.SetFloat("_Gravity", gravity);
             compute.SetFloat("_Damping", damping);
             compute.SetFloat("_MinDepth", minDepth);
+            compute.SetFloat("_DeadBand", deadBand);
             compute.SetFloat("_TideTargetLevel", tideTargetLocalY);
             compute.SetFloat("_TideFillRate", tideFillRate);
 
             int gx = (_w + 7) / 8, gz = (_h + 7) / 8;
+            // 潮汐: 每帧一次(不进子步循环, 否则与 flux 每帧打架 N 次 → 震荡)
+            BindAll(_kTide);
+            compute.SetFloat("_Dt", Time.deltaTime);
+            compute.Dispatch(_kTide, gx, gz, 1);
+            // 水流求解: 子步提高稳定性
+            compute.SetFloat("_Dt", dt);
             for (int s = 0; s < subSteps; s++)
             {
-                BindAll(_kTide); compute.Dispatch(_kTide, gx, gz, 1);
                 BindAll(_kFlux); compute.Dispatch(_kFlux, gx, gz, 1);
                 BindAll(_kApply); compute.Dispatch(_kApply, gx, gz, 1);
             }

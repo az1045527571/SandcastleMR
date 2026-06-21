@@ -18,6 +18,7 @@ float _Damping;
 float _MinDepth;
 float _TideTargetLevel;
 float _TideFillRate;
+float _DeadBand;
 
 StructuredBuffer<float> _Terrain;
 RWStructuredBuffer<float> _Depth;
@@ -34,7 +35,11 @@ float DirFlux(uint i, int dirIdx, int nx, int nz, float level)
     uint ni = Idx((uint)nx, (uint)nz);
     float nLevel = _Terrain[ni] + _Depth[ni];
     float dh = level - nLevel;
-    f = (f + _Dt * _Gravity * dh / _CellSize) * _Damping;
+    // 死水带: 沙面是按体素层量化的阶梯(台阶~_DeadBand), 微小高差是量化噪声,
+    // 不该驱动水流。否则静水也会被台阶激发出波纹。
+    dh = (abs(dh) < _DeadBand) ? 0.0 : dh;
+    // f += dt * A * g * dh / l, A~cellSize^2, l=cellSize => 系数 dt*g*dh*cellSize
+    f = (f + _Dt * _Gravity * dh * _CellSize) * _Damping;
     return max(f, 0.0);
 }
 
