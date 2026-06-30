@@ -26,6 +26,8 @@ Shader "Sandcastle/ShallowWaterSurface"
             StructuredBuffer<float> _DepthBuf;
             StructuredBuffer<float> _TerrainBuf;
             int _GridW;
+            int _GridH;
+            float _LocalTideY;
             float _MinDepthMat;
             float4 _ShallowColor;
             float4 _DeepColor;
@@ -42,7 +44,51 @@ Shader "Sandcastle/ShallowWaterSurface"
                 float terr = _TerrainBuf[IN.vid];
                 float d = _DepthBuf[IN.vid];
                 float3 pos = IN.positionOS;
-                pos.y = terr + max(d, 0.0);
+
+                if (d < _MinDepthMat)
+                {
+                    // 干格：寻找周围 4 邻域中湿格的最大总水位 (terrain + depth)
+                    float maxWater = -9999.0;
+                    int x = IN.vid % _GridW;
+                    int z = IN.vid / _GridW;
+
+                    // Left
+                    if (x > 0)
+                    {
+                        float nd = _DepthBuf[IN.vid - 1];
+                        if (nd >= _MinDepthMat) maxWater = max(maxWater, _TerrainBuf[IN.vid - 1] + nd);
+                    }
+                    // Right
+                    if (x < _GridW - 1)
+                    {
+                        float nd = _DepthBuf[IN.vid + 1];
+                        if (nd >= _MinDepthMat) maxWater = max(maxWater, _TerrainBuf[IN.vid + 1] + nd);
+                    }
+                    // Down
+                    if (z > 0)
+                    {
+                        float nd = _DepthBuf[IN.vid - _GridW];
+                        if (nd >= _MinDepthMat) maxWater = max(maxWater, _TerrainBuf[IN.vid - _GridW] + nd);
+                    }
+                    // Up
+                    if (z < _GridH - 1)
+                    {
+                        float nd = _DepthBuf[IN.vid + _GridW];
+                        if (nd >= _MinDepthMat) maxWater = max(maxWater, _TerrainBuf[IN.vid + _GridW] + nd);
+                    }
+
+                    // 如果邻居有水，以邻居水位为准保持平整，否则 fallback 到基础潮汐水位
+                    if (maxWater > -9900.0)
+                        pos.y = maxWater;
+                    else
+                        pos.y = _LocalTideY;
+                }
+                else
+                {
+                    // 湿格：水面 = 地形底 + 水深
+                    pos.y = terr + d;
+                }
+
                 o.positionHCS = TransformObjectToHClip(pos);
                 o.depth = d;
                 o.localPos = pos;

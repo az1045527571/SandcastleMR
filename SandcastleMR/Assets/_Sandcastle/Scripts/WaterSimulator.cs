@@ -219,7 +219,9 @@ namespace Sandcastle
                 mat.SetBuffer("_DepthBuf", _depthBuf);
                 mat.SetBuffer("_TerrainBuf", _terrainBuf);
                 mat.SetInt("_GridW", _w);
+                mat.SetInt("_GridH", _h);
                 mat.SetFloat("_MinDepthMat", minDepth);
+                mat.SetFloat("_LocalTideY", tideTargetLocalY);
             }
 
             // 诊断回读
