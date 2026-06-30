@@ -30,7 +30,7 @@ uint Idx(uint x, uint z) { return x + z * _W; }
 float DirFlux(uint i, int dirIdx, int nx, int nz, float level)
 {
     float f = _Flux[i * 4 + dirIdx];
-    if (nx < 0 || nx >= (int)_W || nz < 0 || nz >= (int)_H)
+    if (nx <= 0 || nx >= (int)_W - 1 || nz <= 0 || nz >= (int)_H - 1)
         return 0.0;
     uint ni = Idx((uint)nx, (uint)nz);
     float nLevel = _Terrain[ni] + _Depth[ni];
@@ -50,6 +50,16 @@ void UpdateFlux(uint3 id : SV_DispatchThreadID)
     uint x = id.x;
     uint z = id.y;
     uint i = Idx(x, z);
+
+    // 边界上的格点不产生流量
+    if (x == 0 || x == _W - 1 || z == 0 || z == _H - 1)
+    {
+        _Flux[i * 4 + 0] = 0.0;
+        _Flux[i * 4 + 1] = 0.0;
+        _Flux[i * 4 + 2] = 0.0;
+        _Flux[i * 4 + 3] = 0.0;
+        return;
+    }
 
     float level = _Terrain[i] + _Depth[i];
 
@@ -78,6 +88,12 @@ void ApplyFlux(uint3 id : SV_DispatchThreadID)
     uint z = id.y;
     uint i = Idx(x, z);
 
+    if (x == 0 || x == _W - 1 || z == 0 || z == _H - 1)
+    {
+        _Depth[i] = 0.0;
+        return;
+    }
+
     float outF = _Flux[i*4+0] + _Flux[i*4+1] + _Flux[i*4+2] + _Flux[i*4+3];
 
     float inF = 0.0;
@@ -95,6 +111,11 @@ void ApplyFlux(uint3 id : SV_DispatchThreadID)
 void ApplyTide(uint3 id : SV_DispatchThreadID)
 {
     if (id.x >= _W || id.y >= _H) return;
+    if (id.x == 0 || id.x == _W - 1 || id.y == 0 || id.y == _H - 1)
+    {
+        _Depth[Idx(id.x, id.y)] = 0.0;
+        return;
+    }
     uint i = Idx(id.x, id.y);
     float terr = _Terrain[i];
     float targetDepth = max(_TideTargetLevel - terr, 0.0);

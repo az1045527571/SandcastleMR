@@ -40,6 +40,8 @@ namespace Sandcastle
         private ComputeBuffer _terrainBuf, _depthBuf, _fluxBuf;
         private int _kFlux, _kApply, _kTide;
         private float _surfaceTimer;
+        private float[] _oldTerrain;
+        private float[] _tempDepth;
 
         // 水面网格
         private Mesh _waterMesh;
@@ -74,6 +76,48 @@ namespace Sandcastle
         void UploadTerrain()
         {
             float[] surf = _vol.GetSurfaceHeightField();   // 本地 Y, Nx*Nz
+            if (_oldTerrain == null || _oldTerrain.Length != _cellCount)
+            {
+                _oldTerrain = new float[_cellCount];
+                System.Array.Copy(surf, _oldTerrain, _cellCount);
+                _terrainBuf.SetData(surf);
+                return;
+            }
+
+            // 读取当前的 depth 数据 (从 GPU 回读)
+            if (_tempDepth == null || _tempDepth.Length != _cellCount)
+                _tempDepth = new float[_cellCount];
+            _depthBuf.GetData(_tempDepth);
+
+            // 根据地形变化调整深度，防止溢出到沙子上方
+            bool changed = false;
+            for (int i = 0; i < _cellCount; i++)
+            {
+                float oldT = _oldTerrain[i];
+                float newT = surf[i];
+                if (Mathf.Abs(newT - oldT) > 0.001f)
+                {
+                    float oldD = _tempDepth[i];
+                    if (oldD <= 0f)
+                    {
+                        // 之前是干状态，保持干，防止凭空生水
+                        _tempDepth[i] = 0f;
+                    }
+                    else
+                    {
+                        float oldTotal = oldT + oldD;
+                        _tempDepth[i] = Mathf.Max(oldTotal - newT, 0f);
+                    }
+                    changed = true;
+                }
+            }
+
+            if (changed)
+            {
+                _depthBuf.SetData(_tempDepth);
+            }
+
+            System.Array.Copy(surf, _oldTerrain, _cellCount);
             _terrainBuf.SetData(surf);
         }
 
@@ -137,6 +181,13 @@ namespace Sandcastle
             _surfaceTimer -= Time.deltaTime;
             if (_surfaceTimer <= 0f) { UploadTerrain(); _surfaceTimer = 0.2f; }
 
+            // 获取统一的潮汐目标水位
+            var tide = GetComponent<TideController>();
+            if (tide != null)
+            {
+                tideTargetLocalY = tide.CurrentTideLocalY;
+            }
+
             compute.SetInt("_W", _w);
             compute.SetInt("_H", _h);
             compute.SetFloat("_CellSize", _cellSize);
@@ -170,6 +221,14 @@ namespace Sandcastle
                 mat.SetInt("_GridW", _w);
                 mat.SetFloat("_MinDepthMat", minDepth);
             }
+
+            // 诊断回读
+            _diagTimer -= Time.deltaTime;
+            if (_diagTimer <= 0f)
+            {
+                ReadbackDiag();
+                _diagTimer = 0.5f;
+            }
         }
 
         void BindAll(int k)
@@ -177,6 +236,42 @@ namespace Sandcastle
             compute.SetBuffer(k, "_Terrain", _terrainBuf);
             compute.SetBuffer(k, "_Depth", _depthBuf);
             compute.SetBuffer(k, "_Flux", _fluxBuf);
+        }
+
+        // ===== 诊断: 供 F1 面板看水状态稳不稳 =====
+        public struct WaterDiag
+        {
+            public float totalVolume;   // 总水量(m^3) —— 稳态下应趋于常数; 持续涨落=不守恒/炸
+            public float maxDepth;      // 最大水深(m)
+            public float avgDepth;      // 湿格平均水深
+            public int wetCells;        // 湿格数
+            public bool hasNaN;         // 是否出现 NaN/Inf(求解爆炸)
+        }
+        private WaterDiag _diag;
+        private float[] _diagReadback;
+        private float _diagTimer;
+        public WaterDiag GetWaterDiag() => _diag;
+
+        void ReadbackDiag()
+        {
+            if (_diagReadback == null || _diagReadback.Length != _cellCount)
+                _diagReadback = new float[_cellCount];
+            _depthBuf.GetData(_diagReadback);   // 同步回读(仅诊断, 0.5s一次)
+            float total = 0, mx = 0, sum = 0; int wet = 0; bool nan = false;
+            float cellArea = _cellSize * _cellSize;
+            for (int i = 0; i < _cellCount; i++)
+            {
+                float d = _diagReadback[i];
+                if (float.IsNaN(d) || float.IsInfinity(d)) { nan = true; continue; }
+                if (d > minDepth) { wet++; sum += d; }
+                if (d > mx) mx = d;
+                total += d * cellArea;
+            }
+            _diag.totalVolume = total;
+            _diag.maxDepth = mx;
+            _diag.avgDepth = wet > 0 ? sum / wet : 0;
+            _diag.wetCells = wet;
+            _diag.hasNaN = nan;
         }
 
         void OnDestroy()

@@ -12,6 +12,8 @@ public class SandcastleDebugUI : MonoBehaviour
     private bool _show = true;
     private SimpleWave _wave;
     private WaveSimulator _waveSim;
+    private TideController _tideCtrl;
+    private WaterSimulator _waterSim;
 
     // 实时帧率（指数平滑）
     private float _smoothDt;
@@ -25,9 +27,11 @@ public class SandcastleDebugUI : MonoBehaviour
     {
         _wave = FindObjectOfType<SimpleWave>();
         _waveSim = FindObjectOfType<WaveSimulator>();
+        _tideCtrl = FindObjectOfType<TideController>();
+        _waterSim = FindObjectOfType<WaterSimulator>();
         _gpuSand = FindObjectOfType<GpuSandRenderer>();
         if (_waveSim != null) waterLevel = _waveSim.baseWaterLevel;
-    }
+        else if (_tideCtrl != null) waterLevel = _tideCtrl.baseWaterLevel;
 
     void Update()
     {
@@ -112,9 +116,22 @@ public class SandcastleDebugUI : MonoBehaviour
         {
             GUILayout.Label($"当前水位 CurrentLevel: {_waveSim.CurrentWaterLevel:F3}");
         }
+        if (_tideCtrl != null)
+        {
+            GUILayout.Label($"统一潮汐水位: {_tideCtrl.CurrentWaterLevel:F3}  (本地Y: {_tideCtrl.CurrentTideLocalY:F3})");
+        }
+        if (_waterSim != null)
+        {
+            GUILayout.Label("─── 水流体/求解器诊断 ───");
+            var wd = _waterSim.GetWaterDiag();
+            GUILayout.Label($"湿格数: {wd.wetCells}   总水量: {wd.totalVolume:F4} m³");
+            GUILayout.Label($"最大水深: {wd.maxDepth:F3} m   平均水深: {wd.avgDepth:F3} m");
+            if (wd.hasNaN)
+                GUILayout.Label("<color=red><b>⚠️ NaN Detected! 求解爆炸 </b></color>");
+        }
         float globalWaterY = Shader.GetGlobalFloat("_GlobalWaterY");
         GUILayout.Label($"Shader _GlobalWaterY: {globalWaterY:F3}");
-        if (_wave == null && _waveSim == null)
+        if (_wave == null && _waveSim == null && _tideCtrl == null)
             GUILayout.Label("[海浪系统已停用, 水位滑杆无效—等新水方案]");
 
         var cam = Camera.main;
@@ -143,6 +160,14 @@ public class SandcastleDebugUI : MonoBehaviour
             GUILayout.Label($"潮汐周期 Period: {_waveSim.wavePeriod:F1} s");
             _waveSim.wavePeriod = GUILayout.HorizontalSlider(_waveSim.wavePeriod, 1f, 12f);
         }
+        if (_tideCtrl != null)
+        {
+            GUILayout.Label($"统一涨潮幅度 Amplitude: {_tideCtrl.waveAmplitude:F3} m");
+            _tideCtrl.waveAmplitude = GUILayout.HorizontalSlider(_tideCtrl.waveAmplitude, 0f, 0.20f);
+
+            GUILayout.Label($"统一潮汐周期 Period: {_tideCtrl.wavePeriod:F1} s");
+            _tideCtrl.wavePeriod = GUILayout.HorizontalSlider(_tideCtrl.wavePeriod, 1f, 12f);
+        }
 
         GUILayout.EndArea();
     }
@@ -158,5 +183,6 @@ public class SandcastleDebugUI : MonoBehaviour
         }
         if (_waveSim != null)
             _waveSim.baseWaterLevel = waterLevel;
-    }
+        if (_tideCtrl != null)
+            _tideCtrl.baseWaterLevel = waterLevel;
 }

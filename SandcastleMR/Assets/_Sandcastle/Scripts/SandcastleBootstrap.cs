@@ -105,7 +105,9 @@ public class SandcastleBootstrap : MonoBehaviour
             volume.heightmapMaxY = heightmapMaxY;
         }
         sdfGo.AddComponent<SdfVolumeBoundsVisualizer>();
-        // GPU 沙子渲染器（阶段一）：G 键切换 GPU/CPU 路径对照
+        // 统一潮汐与水位控制器
+        sdfGo.AddComponent<TideController>();
+        // GPU 沙子渲染器（阶段一）：F2 键切换 GPU/CPU 路径对照
         sdfGo.AddComponent<GpuSandRenderer>();
         // 水流体求解器(阶段一): GPU 浅水高度场 + 最简水面网格
         sdfGo.AddComponent<WaterSimulator>();

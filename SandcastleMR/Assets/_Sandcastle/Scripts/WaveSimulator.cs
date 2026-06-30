@@ -42,6 +42,7 @@ namespace Sandcastle
         [Header("引用")]
         public SdfVolume sdfVolume;
         public SimpleWave simpleWave;
+        public TideController tideController;
 
         private float _t;
         private float _currentLevel;
@@ -56,6 +57,7 @@ namespace Sandcastle
         {
             if (sdfVolume == null) sdfVolume = FindObjectOfType<SdfVolume>();
             if (simpleWave == null) simpleWave = FindObjectOfType<SimpleWave>();
+            if (tideController == null) tideController = FindObjectOfType<TideController>();
             _particles = ErosionParticles.Create(transform);
             // 延迟一帧初始化，让 SimpleWave.Start 先完成定位
             StartCoroutine(InitWaterLevel());
@@ -77,24 +79,30 @@ namespace Sandcastle
 
         void Update()
         {
-            _t += Time.deltaTime;
-            float phase = (_t % wavePeriod) / wavePeriod; // 0~1
-
-            // 一个周期内：前 surgeRatio 时间是浪起+浪退，后面平静
-            float surge = 0f;
-            if (phase < surgeRatio)
+            if (tideController != null)
             {
-                float p = phase / surgeRatio;
-                surge = Mathf.Sin(p * Mathf.PI); // 0→1→0
+                _currentLevel = tideController.CurrentWaterLevel;
             }
+            else
+            {
+                _t += Time.deltaTime;
+                float phase = (_t % wavePeriod) / wavePeriod; // 0~1
 
-            _currentLevel = baseWaterLevel + surge * waveAmplitude;
+                // 一个周期内：前 surgeRatio 时间是浪起+浪退，后面平静
+                float surge = 0f;
+                if (phase < surgeRatio)
+                {
+                    float p = phase / surgeRatio;
+                    surge = Mathf.Sin(p * Mathf.PI); // 0→1→0
+                }
 
-            // 全局水位传给所有 Sand shader（顶点低Y会自动显示为湿沙）
-            // 用当前真实水位，这样静止时湿沙线锁在静止水面，不会被峰值抬高
-            Shader.SetGlobalFloat("_GlobalWaterY", _currentLevel);
-            Shader.SetGlobalFloat("_GlobalWetTransition", 0.05f);
+                _currentLevel = baseWaterLevel + surge * waveAmplitude;
 
+                // 全局水位传给所有 Sand shader（顶点低Y会自动显示为湿沙）
+                // 用当前真实水位，这样静止时湿沙线锁在静止水面，不会被峰值抬高
+                Shader.SetGlobalFloat("_GlobalWaterY", _currentLevel);
+                Shader.SetGlobalFloat("_GlobalWetTransition", 0.05f);
+            }
             // 同步水面视觉
             if (simpleWave != null)
             {
