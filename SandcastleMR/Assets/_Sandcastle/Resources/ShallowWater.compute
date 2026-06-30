@@ -94,6 +94,13 @@ void ApplyFlux(uint3 id : SV_DispatchThreadID)
         return;
     }
 
+    // 只有第 1 层是潮汐源，其深度在 ApplyTide 中硬性设定，在此不通过流动改变其水深（锁定海洋水位）
+    bool isTideSource = (x == 1 || x == _W - 2 || z == 1 || z == _H - 2);
+    if (isTideSource)
+    {
+        return;
+    }
+
     float outF = _Flux[i*4+0] + _Flux[i*4+1] + _Flux[i*4+2] + _Flux[i*4+3];
 
     float inF = 0.0;
@@ -121,8 +128,6 @@ void ApplyTide(uint3 id : SV_DispatchThreadID)
     {
         uint i = Idx(id.x, id.y);
         float terr = _Terrain[i];
-        float targetDepth = max(_TideTargetLevel - terr, 0.0);
-        float d = lerp(_Depth[i], targetDepth, saturate(_TideFillRate * _Dt));
-        _Depth[i] = max(d, 0.0);
+        _Depth[i] = max(_TideTargetLevel - terr, 0.0);
     }
 }
