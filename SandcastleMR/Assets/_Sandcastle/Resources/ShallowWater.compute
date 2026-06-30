@@ -116,9 +116,13 @@ void ApplyTide(uint3 id : SV_DispatchThreadID)
         _Depth[Idx(id.x, id.y)] = 0.0;
         return;
     }
-    uint i = Idx(id.x, id.y);
-    float terr = _Terrain[i];
-    float targetDepth = max(_TideTargetLevel - terr, 0.0);
-    float d = lerp(_Depth[i], targetDepth, saturate(_TideFillRate * _Dt));
-    _Depth[i] = max(d, 0.0);
+    bool isTideSource = (id.x == 1 || id.x == _W - 2 || id.y == 1 || id.y == _H - 2);
+    if (isTideSource)
+    {
+        uint i = Idx(id.x, id.y);
+        float terr = _Terrain[i];
+        float targetDepth = max(_TideTargetLevel - terr, 0.0);
+        float d = lerp(_Depth[i], targetDepth, saturate(_TideFillRate * _Dt));
+        _Depth[i] = max(d, 0.0);
+    }
 }
