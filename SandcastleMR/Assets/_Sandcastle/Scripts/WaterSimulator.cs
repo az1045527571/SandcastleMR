@@ -25,8 +25,8 @@ namespace Sandcastle
         [Range(0.9f, 1f)] public float damping = 0.96f;
         [Tooltip("低于此水深视为干(米)")]
         public float minDepth = 0.002f;
-        [Tooltip("死水带: 相邻总水位差小于此不驱动水流(米)。压住体素阶梯地形激发的波纹。约一个体素层高")]
-        public float deadBand = 0.02f;
+        [Tooltip("死水带: 相邻总水位差小于此不驱动水流(米)。平滑地形下可设得很小（如2mm）")]
+        public float deadBand = 0.002f;
 
         [Header("潮汐")]
         [Tooltip("目标水位(相对沙箱底的本地Y, 米)。水会涨退逼近此位")]

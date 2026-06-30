@@ -157,10 +157,18 @@ namespace Sandcastle
                 for (int x = 0; x < Nx; x++)
                 {
                     float h = 0f;
-                    // 从顶往下找第一个实心(sdf<0)体素
+                    // 从顶往下找第一个实心(sdf<0)体素，使用线性插值获取精确的零等值面高度，避免体素阶梯化
                     for (int y = Ny - 1; y >= 0; y--)
                     {
-                        if (_sdf[Index(x, y, z)] < 0f) { h = y * dy; break; }
+                        float sdfVal = _sdf[Index(x, y, z)];
+                        if (sdfVal < 0f)
+                        {
+                            float sdfAbove = (y < Ny - 1) ? _sdf[Index(x, y + 1, z)] : 0f;
+                            float diff = sdfAbove - sdfVal;
+                            float t = (diff > 1e-4f) ? (-sdfVal / diff) : 0f;
+                            h = (y + Mathf.Clamp01(t)) * dy;
+                            break;
+                        }
                     }
                     _surfaceHeight[x + z * Nx] = h;
                 }
