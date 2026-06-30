@@ -32,7 +32,7 @@ public class SandcastleDebugUI : MonoBehaviour
         _gpuSand = FindObjectOfType<GpuSandRenderer>();
         if (_waveSim != null) waterLevel = _waveSim.baseWaterLevel;
         else if (_tideCtrl != null) waterLevel = _tideCtrl.baseWaterLevel;
-
+    }
     void Update()
     {
         if (Input.GetKeyDown(KeyCode.F1)) _show = !_show;
