@@ -185,4 +185,5 @@ public class SandcastleDebugUI : MonoBehaviour
             _waveSim.baseWaterLevel = waterLevel;
         if (_tideCtrl != null)
             _tideCtrl.baseWaterLevel = waterLevel;
+    }
 }
