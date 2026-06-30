@@ -79,9 +79,13 @@ namespace Sandcastle
 
         void Update()
         {
+            float surge = 0f;
             if (tideController != null)
             {
                 _currentLevel = tideController.CurrentWaterLevel;
+                float amp = tideController.waveAmplitude;
+                float baseLevel = tideController.baseWaterLevel;
+                surge = amp > 0.001f ? (_currentLevel - baseLevel) / amp : 0f;
             }
             else
             {
@@ -89,7 +93,6 @@ namespace Sandcastle
                 float phase = (_t % wavePeriod) / wavePeriod; // 0~1
 
                 // 一个周期内：前 surgeRatio 时间是浪起+浪退，后面平静
-                float surge = 0f;
                 if (phase < surgeRatio)
                 {
                     float p = phase / surgeRatio;
