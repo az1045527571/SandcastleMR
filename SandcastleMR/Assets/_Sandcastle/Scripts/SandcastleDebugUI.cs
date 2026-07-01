@@ -52,7 +52,7 @@ public class SandcastleDebugUI : MonoBehaviour
     {
         if (!_show) return;
 
-        GUILayout.BeginArea(new Rect(10, 10, 420, 700), GUI.skin.box);
+        GUILayout.BeginArea(new Rect(10, 10, 420, 900), GUI.skin.box);
         // 实时帧率
         float fps = _smoothDt > 1e-5f ? 1f / _smoothDt : 0f;
         string path = _gpuSand != null && _gpuSand.useGpu ? "GPU" : "CPU";
@@ -167,6 +167,46 @@ public class SandcastleDebugUI : MonoBehaviour
 
             GUILayout.Label($"统一潮汐周期 Period: {_tideCtrl.wavePeriod:F1} s");
             _tideCtrl.wavePeriod = GUILayout.HorizontalSlider(_tideCtrl.wavePeriod, 1f, 12f);
+        }
+        if (_waterSim != null)
+        {
+            GUILayout.Label("─── 流体与水体材质参数 ───");
+
+            GUILayout.Label($"流体子步 SubSteps: {_waterSim.subSteps}");
+            _waterSim.subSteps = (int)GUILayout.HorizontalSlider(_waterSim.subSteps, 1f, 8f);
+
+            GUILayout.Label($"重力系数 Gravity: {_waterSim.gravity:F2} m/s²");
+            _waterSim.gravity = GUILayout.HorizontalSlider(_waterSim.gravity, 0f, 20f);
+
+            GUILayout.Label($"流量阻尼 Damping: {_waterSim.damping:F3}");
+            _waterSim.damping = GUILayout.HorizontalSlider(_waterSim.damping, 0.90f, 1.0f);
+
+            GUILayout.Label($"死水带 DeadBand: {_waterSim.deadBand:F4} m");
+            _waterSim.deadBand = GUILayout.HorizontalSlider(_waterSim.deadBand, 0f, 0.05f);
+
+            GUILayout.Label($"渲染阈值 MinDepth: {_waterSim.minDepth:F4} m");
+            _waterSim.minDepth = GUILayout.HorizontalSlider(_waterSim.minDepth, 0.001f, 0.01f);
+
+            // 材质渲染参数调节
+            var mr = _waterSim.GetComponentInChildren<MeshRenderer>();
+            if (mr != null && mr.sharedMaterial != null)
+            {
+                var mat = mr.sharedMaterial;
+                if (mat.HasProperty("_RefractionStrength"))
+                {
+                    float refr = mat.GetFloat("_RefractionStrength");
+                    GUILayout.Label($"水面折射强度 Refraction: {refr:F3}");
+                    float newRefr = GUILayout.HorizontalSlider(refr, 0f, 0.05f);
+                    if (!Mathf.Approximately(newRefr, refr)) mat.SetFloat("_RefractionStrength", newRefr);
+                }
+                if (mat.HasProperty("_CausticStrength"))
+                {
+                    float caust = mat.GetFloat("_CausticStrength");
+                    GUILayout.Label($"水面焦散强度 Caustics: {caust:F2}");
+                    float newCaust = GUILayout.HorizontalSlider(caust, 0f, 1.0f);
+                    if (!Mathf.Approximately(newCaust, caust)) mat.SetFloat("_CausticStrength", newCaust);
+                }
+            }
         }
 
         GUILayout.EndArea();
