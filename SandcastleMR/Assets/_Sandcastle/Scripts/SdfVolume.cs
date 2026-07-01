@@ -177,6 +177,8 @@ namespace Sandcastle
         /// <summary>base 是否需重算（piece 增删），供 GPU 决定是否重跑 EvaluateBase kernel</summary>
         public bool ConsumeBaseDirty() { bool d = _baseDirty; _baseDirty = false; return d; }
         public bool BaseDirty => _baseDirty;
+        private bool _terrainChanged = true;
+        public bool ConsumeTerrainChanged() { bool c = _terrainChanged; _terrainChanged = false; return c; }
 
         /// <summary>诊断统计: 供 DebugUI 显示侵蚀/雕虯状态。</summary>
         public struct Diag
@@ -645,6 +647,7 @@ namespace Sandcastle
 
         public void RebuildMesh()
         {
+            _terrainChanged = true;
             // GPU 路径：base(含piece)和 erosion 都在 GPU 算，CPU 不跑 EvaluateBase/合成/MC
             // _baseDirty 交由 GpuSandRenderer.ConsumeBaseDirty 读取决定是否重跑 GPU EvaluateBase
             // GPU 路径：base(含 piece, 含 bakedmesh) 仍由 CPU 算一次(低频, 仅 piece 增删),

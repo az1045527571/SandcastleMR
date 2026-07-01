@@ -177,9 +177,11 @@ namespace Sandcastle
             if (_vol == null) return;
             float dt = Time.deltaTime / subSteps;
 
-            // 沙面可能改了(放/删/铲挖/塔陷): 节流重传地形(0.2s一次, 避免每帧扫全体素)
-            _surfaceTimer -= Time.deltaTime;
-            if (_surfaceTimer <= 0f) { UploadTerrain(); _surfaceTimer = 0.2f; }
+            // 沙面可能改了(放/删/铲挖/塔陷): 仅在沙面变化时更新地形数据，防止浮点微调阻碍水面上升
+            if (_vol.ConsumeTerrainChanged())
+            {
+                UploadTerrain();
+            }
 
             // 获取统一的潮汐目标水位
             var tide = GetComponent<TideController>();
