@@ -34,6 +34,32 @@ namespace Sandcastle
         [Tooltip("逼近目标水位的速率")]
         public float tideFillRate = 0.5f;
 
+        [Header("水沙联动")]
+        [Tooltip("开启后，GPU 浅水高度场会按局部水深和流速侵蚀 SDF 沙体")]
+        public bool erosionEnabled = true;
+        [Tooltip("满强度水流每秒让 SDF 表面后退多少米")]
+        public float erodePerSecond = 0.006f;
+        [Tooltip("水面上方多少米内的表面参与冲刷")]
+        public float erodeBandAboveWater = 0.08f;
+        [Tooltip("水面下方多少米内的表面参与冲刷")]
+        public float erodeBandBelowWater = 0.05f;
+        [Tooltip("侵蚀/湿度回读与重建间隔。越小越连贯，越大越省")]
+        public float erosionInterval = 0.25f;
+        [Tooltip("低于此水深只渲染/流动，不侵蚀")]
+        public float erosionMinDepth = 0.006f;
+        [Tooltip("达到满静水侵蚀强度所需水深")]
+        public float erosionDepthForFullStrength = 0.04f;
+        [Tooltip("达到满水流冲刷强度所需近似流速(m/s)")]
+        public float erosionFlowSpeedForFullStrength = 0.30f;
+        [Tooltip("0=只看水深浸泡，1=只看流速冲刷")]
+        [Range(0f, 1f)] public float flowErosionWeight = 0.65f;
+        [Tooltip("被水浸泡后自动固化到的湿度上限。玩家浇水可继续加到 1")]
+        [Range(0f, 1f)] public float waterWetnessTarget = 0.55f;
+        [Tooltip("水浸泡每秒增加湿度")]
+        public float waterWetnessPerSecond = 0.8f;
+        [Tooltip("湿度自然蒸发速度(每秒)")]
+        public float wetnessDecay = 0.04f;
+
         private SdfVolume _vol;
         private int _w, _h, _cellCount;
         private float _cellSize;
@@ -42,6 +68,10 @@ namespace Sandcastle
         private float _surfaceTimer;
         private float[] _oldTerrain;
         private float[] _tempDepth;
+        private float[] _erosionDepth;
+        private float[] _erosionFlux;
+        private float _erosionTimer;
+        private ErosionParticles _particles;
 
         // 水面网格
         private Mesh _waterMesh;
@@ -226,6 +256,8 @@ namespace Sandcastle
                 mat.SetFloat("_LocalTideY", tideTargetLocalY);
             }
 
+            UpdateWaterSandCoupling(Time.deltaTime);
+
             // 诊断回读
             _diagTimer -= Time.deltaTime;
             if (_diagTimer <= 0f)
@@ -240,6 +272,69 @@ namespace Sandcastle
             compute.SetBuffer(k, "_Terrain", _terrainBuf);
             compute.SetBuffer(k, "_Depth", _depthBuf);
             compute.SetBuffer(k, "_Flux", _fluxBuf);
+        }
+
+        void UpdateWaterSandCoupling(float deltaTime)
+        {
+            if (_vol == null || _depthBuf == null || _fluxBuf == null) return;
+
+            _erosionTimer += deltaTime;
+            float interval = Mathf.Max(0.02f, erosionInterval);
+            if (_erosionTimer < interval) return;
+
+            float elapsed = Mathf.Min(_erosionTimer, interval * 4f);
+            _erosionTimer = 0f;
+
+            bool changed = false;
+            if (wetnessDecay > 0f)
+                changed |= _vol.DecayWetnessForDelta(wetnessDecay, elapsed);
+
+            bool waterAffectsSand = erosionEnabled || waterWetnessPerSecond > 0f;
+            if (waterAffectsSand)
+            {
+                PerfProbe.Begin("GPU.WaterReadback");
+                if (_erosionDepth == null || _erosionDepth.Length != _cellCount)
+                    _erosionDepth = new float[_cellCount];
+                _depthBuf.GetData(_erosionDepth);
+
+                float[] flux = null;
+                if (flowErosionWeight > 0f && erosionEnabled)
+                {
+                    int fluxCount = _cellCount * 4;
+                    if (_erosionFlux == null || _erosionFlux.Length != fluxCount)
+                        _erosionFlux = new float[fluxCount];
+                    _fluxBuf.GetData(_erosionFlux);
+                    flux = _erosionFlux;
+                }
+                PerfProbe.End("GPU.WaterReadback");
+
+                float erosionAmount = erosionEnabled ? erodePerSecond * elapsed : 0f;
+                float wetnessAmount = waterWetnessPerSecond * elapsed;
+                changed |= _vol.SurfaceErodeByWaterField(
+                    _erosionDepth,
+                    flux,
+                    _w,
+                    _h,
+                    erosionAmount,
+                    erodeBandAboveWater,
+                    erodeBandBelowWater,
+                    erosionMinDepth,
+                    erosionDepthForFullStrength,
+                    erosionFlowSpeedForFullStrength,
+                    flowErosionWeight,
+                    waterWetnessTarget,
+                    wetnessAmount);
+            }
+
+            if (!changed) return;
+
+            _vol.RebuildMesh();
+            if (_vol.LastErodedPoints.Count > 0)
+            {
+                if (_particles == null) _particles = ErosionParticles.Create(transform);
+                _particles.Emit(_vol.LastErodedPoints);
+                _vol.CheckCollapse();
+            }
         }
 
         // ===== 诊断: 供 F1 面板看水状态稳不稳 =====

@@ -109,7 +109,7 @@ public class SandcastleBootstrap : MonoBehaviour
         sdfGo.AddComponent<TideController>();
         // GPU 沙子渲染器（阶段一）：F2 键切换 GPU/CPU 路径对照
         sdfGo.AddComponent<GpuSandRenderer>();
-        // 水流体求解器(阶段一): GPU 浅水高度场 + 最简水面网格
+        // 水流体求解器: GPU 浅水高度场 + 水沙侵蚀/湿沙固化联动
         sdfGo.AddComponent<WaterSimulator>();
 
         // 兵底平面 collider（仅在挖穿见底时兑底），降到沙层底部 世界 Y≈-0.24
@@ -156,9 +156,9 @@ public class SandcastleBootstrap : MonoBehaviour
         }
     }
 
-    // 【水方案重做中 2026-06】海浪侵蚀(WaveSimulator)、假水面(SimpleWave)、静态全局水位全部停用。
-    // 代码保留供回滚。新水系统就绪后重接。现阶段沙子在无水环境下独立验证。
-    // 塔陷检测(RemoveUnsupported)已迁至 SdfVolume 放/删 piece 与铲子挖后触发, 不再依赖海浪。
+    // 旧海浪侵蚀(WaveSimulator)、假水面(SimpleWave)、静态全局水位已停用。
+    // 当前水系统由 WaterSimulator + TideController 驱动：GPU 浅水流体负责局部积水，水沙联动负责侵蚀/湿沙固化。
+    // 塔陷检测(RemoveUnsupported)已迁至 SdfVolume 放/删 piece、铲子挖和水流侵蚀后触发。
 
     void BuildCamera()
     {

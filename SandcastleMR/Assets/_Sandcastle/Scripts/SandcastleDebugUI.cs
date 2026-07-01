@@ -132,7 +132,7 @@ public class SandcastleDebugUI : MonoBehaviour
         float globalWaterY = Shader.GetGlobalFloat("_GlobalWaterY");
         GUILayout.Label($"Shader _GlobalWaterY: {globalWaterY:F3}");
         if (_wave == null && _waveSim == null && _tideCtrl == null)
-            GUILayout.Label("[海浪系统已停用, 水位滑杆无效—等新水方案]");
+            GUILayout.Label("[未找到 TideController/水系统，水位滑杆只会写入缓存值]");
 
         var cam = Camera.main;
         if (cam != null)
@@ -186,6 +186,27 @@ public class SandcastleDebugUI : MonoBehaviour
 
             GUILayout.Label($"渲染阈值 MinDepth: {_waterSim.minDepth:F4} m");
             _waterSim.minDepth = GUILayout.HorizontalSlider(_waterSim.minDepth, 0.001f, 0.01f);
+
+            GUILayout.Label("─── 水沙侵蚀/湿沙固化 ───");
+            _waterSim.erosionEnabled = GUILayout.Toggle(_waterSim.erosionEnabled, "启用水流侵蚀 Enable Erosion");
+
+            GUILayout.Label($"侵蚀速度 Erode/s: {_waterSim.erodePerSecond:F4} m");
+            _waterSim.erodePerSecond = GUILayout.HorizontalSlider(_waterSim.erodePerSecond, 0f, 0.03f);
+
+            GUILayout.Label($"侵蚀间隔 Interval: {_waterSim.erosionInterval:F2} s");
+            _waterSim.erosionInterval = GUILayout.HorizontalSlider(_waterSim.erosionInterval, 0.05f, 1.0f);
+
+            GUILayout.Label($"侵蚀最小水深 ErosionMinDepth: {_waterSim.erosionMinDepth:F4} m");
+            _waterSim.erosionMinDepth = GUILayout.HorizontalSlider(_waterSim.erosionMinDepth, 0.001f, 0.03f);
+
+            GUILayout.Label($"流速冲刷权重 FlowWeight: {_waterSim.flowErosionWeight:F2}");
+            _waterSim.flowErosionWeight = GUILayout.HorizontalSlider(_waterSim.flowErosionWeight, 0f, 1f);
+
+            GUILayout.Label($"湿沙固化目标 WetTarget: {_waterSim.waterWetnessTarget:F2}");
+            _waterSim.waterWetnessTarget = GUILayout.HorizontalSlider(_waterSim.waterWetnessTarget, 0f, 1f);
+
+            GUILayout.Label($"湿度蒸发 WetDecay/s: {_waterSim.wetnessDecay:F3}");
+            _waterSim.wetnessDecay = GUILayout.HorizontalSlider(_waterSim.wetnessDecay, 0f, 0.20f);
 
             // 材质渲染参数调节
             var mr = _waterSim.GetComponentInChildren<MeshRenderer>();

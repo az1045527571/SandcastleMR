@@ -599,6 +599,117 @@ namespace Sandcastle
             PerfProbe.End("CPU.SurfaceErode");
         }
 
+        /// <summary>
+        /// 流体高度场驱动的局部侵蚀/湿润。
+        /// depth/flux 与 SDF 的 XZ 网格一一对应；只处理有水格，避免旧全局水位把整条水平带一起冲掉。
+        /// amount 是本次调用的最大 SDF 后退量（米），flowWeight 控制静水浸泡与水流冲刷的权重。
+        /// 调用方负责在返回 true 后 RebuildMesh()。
+        /// </summary>
+        public bool SurfaceErodeByWaterField(
+            float[] depth,
+            float[] flux,
+            int fieldWidth,
+            int fieldHeight,
+            float amount,
+            float bandAboveWater,
+            float bandBelowWater,
+            float minDepth,
+            float depthForFullStrength,
+            float flowSpeedForFullStrength,
+            float flowWeight,
+            float wetnessTarget,
+            float wetnessAmount)
+        {
+            PerfProbe.Begin("CPU.WaterFieldErode");
+            LastErodedPoints.Clear();
+
+            int cells = Nx * Nz;
+            if (depth == null || depth.Length < cells || fieldWidth != Nx || fieldHeight != Nz)
+            {
+                PerfProbe.End("CPU.WaterFieldErode");
+                return false;
+            }
+
+            float[] surface = GetSurfaceHeightField();
+            float dx = size.x / resolutionX;
+            float dy = size.y / resolutionY;
+            float dz = size.z / resolutionZ;
+            float cellArea = Mathf.Max(dx * dz, 1e-6f);
+            float safeDepthForFull = Mathf.Max(depthForFullStrength, 1e-4f);
+            float safeFlowForFull = Mathf.Max(flowSpeedForFullStrength, 1e-4f);
+            float clampedFlowWeight = Mathf.Clamp01(flowWeight);
+            float clampedWetTarget = Mathf.Clamp01(wetnessTarget);
+            float safeBandAbove = Mathf.Max(0f, bandAboveWater);
+            float safeBandBelow = Mathf.Max(0f, bandBelowWater);
+            bool hasFlux = flux != null && flux.Length >= cells * 4;
+            bool canWet = wetnessAmount > 0f && clampedWetTarget > 0f;
+            bool canErode = amount > 0f;
+            bool changed = false;
+
+            for (int z = 1; z < Nz - 1; z++)
+            {
+                for (int x = 1; x < Nx - 1; x++)
+                {
+                    int cell = x + z * Nx;
+                    float d = depth[cell];
+                    if (d <= minDepth) continue;
+
+                    float depthFactor = Mathf.Clamp01((d - minDepth) / safeDepthForFull);
+                    float flowFactor = 0f;
+                    if (hasFlux)
+                    {
+                        int f = cell * 4;
+                        float flow = flux[f] + flux[f + 1] + flux[f + 2] + flux[f + 3];
+                        flow += flux[((x - 1) + z * Nx) * 4 + 1];
+                        flow += flux[((x + 1) + z * Nx) * 4];
+                        flow += flux[(x + (z - 1) * Nx) * 4 + 3];
+                        flow += flux[(x + (z + 1) * Nx) * 4 + 2];
+                        float speed = flow / Mathf.Max(cellArea * d, 1e-6f);
+                        flowFactor = Mathf.Clamp01(speed / safeFlowForFull);
+                    }
+                    float scour = Mathf.Clamp01(Mathf.Lerp(depthFactor, flowFactor, clampedFlowWeight));
+                    if (!canWet && (!canErode || scour <= 0f)) continue;
+
+                    float waterLocalY = surface[cell] + d;
+                    int y0 = Mathf.Clamp(Mathf.FloorToInt((waterLocalY - safeBandBelow) / dy), 0, Ny - 1);
+                    int y1 = Mathf.Clamp(Mathf.CeilToInt((waterLocalY + safeBandAbove) / dy), 0, Ny - 1);
+                    for (int y = y0; y <= y1; y++)
+                    {
+                        int idx = Index(x, y, z);
+                        float curr = _sdfBase[idx] + _erosion[idx];
+                        if (curr > 0.02f) continue;
+
+                        if (canWet && _wetness[idx] < clampedWetTarget)
+                        {
+                            _wetness[idx] = Mathf.Min(clampedWetTarget, _wetness[idx] + wetnessAmount);
+                            changed = true;
+                        }
+
+                        if (!canErode || scour <= 0f || curr > 0f) continue;
+
+                        float resist = 1f - _wetness[idx] * wetResistance;
+                        if (resist <= 0f) continue;
+                        float applied = amount * scour * resist;
+                        if (applied <= 0f) continue;
+
+                        _erosion[idx] += applied;
+                        changed = true;
+
+                        if (curr > -0.02f && (_sdfBase[idx] + _erosion[idx]) > 0f
+                            && LastErodedPoints.Count < MaxErodedPoints)
+                        {
+                            Vector3 lp = new Vector3(x * dx, y * dy, z * dz);
+                            LastErodedPoints.Add(LocalToWorld(lp));
+                        }
+                        if (_sdfBase[idx] + _erosion[idx] > 0f) _carved[idx] = true;
+                    }
+                }
+            }
+
+            PerfProbe.End("CPU.WaterFieldErode");
+            return changed;
+        }
+
         /// <summary>玩家浇水：在世界坐标 center 周围 radius 米内增加体素湿度。
         /// 湿沙会按 wetResistance 抵抗海浪侵蚀，打造护城河/加固效果。
         /// </summary>
@@ -633,12 +744,26 @@ namespace Sandcastle
         /// <summary>每帧调一次让湿度蒸发。应在 Update 里调。</summary>
         public void DecayWetness(float decayPerSecond)
         {
-            float decay = decayPerSecond * Time.deltaTime;
+            DecayWetnessForDelta(decayPerSecond, Time.deltaTime);
+        }
+
+        /// <summary>按指定时间步让湿度蒸发。返回 true 表示湿度场发生变化，需要刷新渲染。</summary>
+        public bool DecayWetnessForDelta(float decayPerSecond, float deltaTime)
+        {
+            float decay = Mathf.Max(0f, decayPerSecond) * Mathf.Max(0f, deltaTime);
+            if (decay <= 0f) return false;
+            bool changed = false;
             for (int i = 0; i < _wetness.Length; i++)
             {
-                if (_wetness[i] > 0f)
-                    _wetness[i] = Mathf.Max(0f, _wetness[i] - decay);
+                if (_wetness[i] <= 0f) continue;
+                float next = Mathf.Max(0f, _wetness[i] - decay);
+                if (next < _wetness[i])
+                {
+                    _wetness[i] = next;
+                    changed = true;
+                }
             }
+            return changed;
         }
 
         // GPU 渲染器（存在且激活时，CPU 跳过 ExtractMesh，只合成 _sdf 供 GPU 上传）
